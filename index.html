@@ -680,8 +680,8 @@ async function sbLoadAll(){
   try{
     const {data:inv, error:e1} = await supa.from('invoices').select('*').order('added_at',{ascending:false});
     if(e1) throw e1;
-    if(inv && inv.length){
-      invoices = inv.map(r=>({
+    // Always replace invoices array from Supabase (empty = truly empty, don't fall back)
+    invoices = (inv||[]).map(r=>({
         id:r.id, vendor:r.vendor, date:r.date,
         invoice_number:r.invoice_number, filename:r.filename,
         boxes:r.boxes, total:r.total, qty_shipped:r.qty_shipped,
@@ -690,7 +690,6 @@ async function sbLoadAll(){
         rcv2:r.rcv2||'', rcv2ts:r.rcv2ts||'',
         rcv3:r.rcv3||'', rcv3ts:r.rcv3ts||'',
       }));
-    }
     const {data:arch} = await supa.from('archived_weeks').select('*');
     if(arch && arch.length){
       archived = arch.map(r=>({
@@ -903,8 +902,11 @@ function closeM(id){document.getElementById(id).classList.remove('show');}
 function getKey(){return localStorage.getItem('ck_key')||'';}
 function saveKey(){
   const k=document.getElementById('apiIn').value.trim();
-  if(!k.startsWith('sk-ant-')){toast('Key should start with sk-ant-','wrn');return;}
-  localStorage.setItem('ck_key',k);updateKeyUI();closeM('apiMod');toast('API key saved!','ok');
+  if(!k.startsWith('sk-')) { toast('Invalid API key format','wrn'); return; }
+  localStorage.setItem('ck_key', k);
+  sbSaveApiKey(k); // share with all team devices
+  updateKeyUI(); closeM('apiMod');
+  toast('API key saved & shared with team','ok');
 }
 function updateKeyUI(){
   const k=getKey();
@@ -1321,21 +1323,16 @@ function renderTbl(){
     return;
   }
 
-  // Group by vendor alphabetically
+  // Group by vendor A→Z, invoices newest first
   const vendorMap={};
-  data.forEach(x=>{
-    const v=x.vendor||'Unknown';
-    if(!vendorMap[v]) vendorMap[v]=[];
-    vendorMap[v].push(x);
-  });
-  // Sort vendors A→Z
+  data.forEach(x=>{ const v=x.vendor||'Unknown'; if(!vendorMap[v]) vendorMap[v]=[]; vendorMap[v].push(x); });
   const vendors=Object.keys(vendorMap).sort((a,b)=>a.toLowerCase().localeCompare(b.toLowerCase()));
-  // Sort invoices within each vendor by date newest first
   vendors.forEach(v=>vendorMap[v].sort((a,b)=>ms(b.date)-ms(a.date)));
 
   const grand=data.reduce((s,x)=>s+amt(x.total),0);
   const totalBoxes=data.reduce((s,x)=>s+toNum(x.boxes),0);
   const totalQty=data.reduce((s,x)=>s+toNum(x.qty_shipped),0);
+  const isMobile=window.innerWidth<=600;
 
   let html='';
   vendors.forEach(vendor=>{
@@ -1346,45 +1343,43 @@ function renderTbl(){
     const vStatuses=vinvs.map(x=>getStatus(x));
     const allDone=vStatuses.every(s=>s==='complete');
     const anyPartial=vStatuses.some(s=>s==='partial'||s==='overage');
-    const statusDot=allDone?'<span class="badge badge-green" style="font-size:10px;padding:1px 7px">✓ All Done</span>'
+    const statusDot=allDone
+      ?'<span class="badge badge-green" style="font-size:10px;padding:1px 7px">✓ All Done</span>'
       :anyPartial?'<span class="badge badge-amber" style="font-size:10px;padding:1px 7px">In Progress</span>'
       :'<span class="badge badge-gray" style="font-size:10px;padding:1px 7px">Pending</span>';
 
-    // Vendor group header row
-    html+=`<tr class="${isMobile ? 'vg-hdr open' : 'vg-hdr'}" onclick="toggleVendorGroup('${vid}',this)">
-      <td colspan="8">
-        <span class="vg-toggle">▶</span>
+    // Use data-vg attribute to group rows — NO nested tbody
+    const startOpen = isMobile; // open on mobile, closed on desktop
+    html+=`<tr class="vg-hdr${startOpen?' open':''}" data-vg-hdr="${vid}" onclick="toggleVendorGroup('${vid}',this)">
+      <td colspan="8" style="padding:10px 14px">
+        <span class="vg-toggle" style="display:inline-block;transition:transform .2s;margin-right:6px;font-size:11px;color:var(--text3)">${startOpen?'▼':'▶'}</span>
         <strong>${esc(vendor)}</strong>
         <span style="font-weight:400;color:var(--text3);margin-left:10px;font-size:11px">${vinvs.length} invoice${vinvs.length!==1?'s':''} &nbsp;·&nbsp; ${vBoxes} boxes &nbsp;·&nbsp; $${vTotal.toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2})}</span>
         <span style="float:right">${statusDot}</span>
       </td>
     </tr>`;
 
-    // On mobile: start open. On desktop: start collapsed.
-    const isMobile = window.innerWidth <= 600;
-    html+=`<tbody class="vg-rows${isMobile ? '' : ' collapsed'}" id="${vid}">`;
     vinvs.forEach(x=>{
       const st=getStatus(x);
       const boxes=toNum(x.boxes);
-      const isComp=st==='complete';
       let badge='';
       if(st==='complete')     badge='<span class="badge badge-green">✓ Done</span>';
       else if(st==='overage') badge='<span class="badge badge-red">⚠ Overage</span>';
       else if(st==='partial') badge='<span class="badge badge-amber">Partial</span>';
       else if(boxes>0)        badge='<span class="badge badge-gray">Pending</span>';
 
-      // Invoice # as blue link (opens file if stored, otherwise just styled)
-      const invNumDisplay=`<span style="color:var(--blue);font-weight:500">${esc(x.invoice_number||'—')}</span>`;
+      const invNum=`<span style="color:var(--blue);font-weight:500">${esc(x.invoice_number||'—')}</span>`;
+      const rowStyle=startOpen?'':'display:none';
 
-      html+=`<tr data-id="${x.id}" class="${isComp?'comp-row':''}">
+      html+=`<tr data-vg-row="${vid}" class="${st==='complete'?'comp-row':''}" style="${rowStyle}">
         <td class="td-v" style="padding-left:28px;color:var(--text3);font-size:11px">${esc(x.date||'—')}</td>
-        <td class="td-i">${invNumDisplay}${newIds.has(x.id)?'<span class="new-tag">new</span>':''}</td>
+        <td class="td-i">${invNum}${newIds.has(x.id)?'<span class="new-tag">new</span>':''}</td>
         <td><div class="fname" title="${esc(x.filename||'')}">${x.filename?'📎 '+esc(x.filename.length>18?x.filename.substring(0,16)+'…':x.filename):'—'}</div></td>
-        <td class="td-b" style="text-align:center">${boxes||'—'}</td>
+        <td style="text-align:center">${boxes||'—'}</td>
         <td style="text-align:center;color:${x.qty_shipped?'var(--text)':'var(--text3)'}">
           ${x.qty_shipped||'<span style="font-size:10px;color:var(--text3)">—</span>'}
         </td>
-        <td class="td-a">${esc(x.total||'—')}</td>
+        <td style="text-align:right">${esc(x.total||'—')}</td>
         <td style="text-align:center">${badge}</td>
         <td><div class="action-cell">
           <button class="editbtn" onclick="openEdit('${x.id}')" title="Edit">✏️</button>
@@ -1392,30 +1387,38 @@ function renderTbl(){
         </div></td>
       </tr>`;
     });
-    html+='</tbody>';
   });
 
-  // Grand total row
   html+=`<tr class="tot-row">
     <td colspan="3" style="font-size:11px;color:var(--text2)">TOTAL — ${data.length} invoice${data.length!==1?'s':''} across ${vendors.length} vendor${vendors.length!==1?'s':''}</td>
     <td style="text-align:center;font-weight:600">${totalBoxes||'—'}</td>
     <td style="text-align:center;font-weight:600;color:var(--text2)">${totalQty||'—'}</td>
-    <td class="td-a">$${grand.toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2})}</td>
+    <td style="text-align:right;font-weight:600">$${grand.toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2})}</td>
     <td></td><td></td>
   </tr>`;
 
   tbody.innerHTML=html;
   document.getElementById('exportBtn').disabled=false;
-  // Show tap hint on mobile if groups are collapsed
-  const hint = document.getElementById('mobileHint');
-  if(hint) hint.style.display = (window.innerWidth <= 600 ? 'none' : 'block');
 }
 
+
 function toggleVendorGroup(vid, hdrEl){
-  const body=document.getElementById(vid);
-  if(!body) return;
-  const isNowCollapsed=body.classList.toggle('collapsed');
-  hdrEl.classList.toggle('open', !isNowCollapsed);
+  // Find all rows belonging to this vendor group
+  const rows = document.querySelectorAll(`tr[data-vg-row="${vid}"]`);
+  const isOpen = hdrEl.classList.contains('open');
+  if(isOpen){
+    // Collapse
+    rows.forEach(r=>r.style.display='none');
+    hdrEl.classList.remove('open');
+    const arrow = hdrEl.querySelector('.vg-toggle');
+    if(arrow) arrow.textContent='▶';
+  } else {
+    // Expand
+    rows.forEach(r=>r.style.display='');
+    hdrEl.classList.add('open');
+    const arrow = hdrEl.querySelector('.vg-toggle');
+    if(arrow) arrow.textContent='▼';
+  }
 }
 
 
@@ -2032,13 +2035,24 @@ function toast(msg,type='ok'){const t=document.createElement('div');t.className=
 // ─── INIT ─────────────────────────────────────────────────────────────────────
 updateKeyUI();
 (async()=>{
+  // Load shared API key from Supabase first
+  const sharedKey = await sbLoadApiKey();
+  if(sharedKey && !localStorage.getItem('ck_key')){
+    toast('✓ API key loaded from team settings','ok');
+  }
+  updateKeyUI();
   const ok = await sbLoadAll();
-  if(!invoices.length) invoices=JSON.parse(localStorage.getItem('ck_inv')||'[]');
-  if(!archived.length) archived=JSON.parse(localStorage.getItem('ck_archived')||'[]');
+  // Only fall back to localStorage if Supabase completely failed (network error)
+  // Do NOT overwrite good Supabase data with stale local data
+  if(!ok){
+    invoices=JSON.parse(localStorage.getItem('ck_inv')||'[]');
+    archived=JSON.parse(localStorage.getItem('ck_archived')||'[]');
+    toast('⚠️ Offline mode — showing local data only','wrn');
+  } else {
+    toast('✓ Connected — '+invoices.length+' invoices loaded','ok');
+  }
   renderTbl(); updateStats();
   checkAutoArchive(); setInterval(checkAutoArchive,3600000);
-  if(ok) toast('✓ Connected to team database','ok');
-  else toast('⚠️ Offline mode — changes will sync when reconnected','wrn');
 
   // Auto-refresh every 30s to pick up changes from other devices
   setInterval(async()=>{
