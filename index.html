@@ -411,6 +411,10 @@ tbody tr:hover .delbtn,tbody tr:hover .editbtn{opacity:1;}
     <div class="api-pill" onclick="openM('apiMod')">
       <div class="dot" id="apiDot"></div><span id="apiTxt">No API Key</span>
     </div>
+    <div class="api-pill" id="syncStatus" style="cursor:default">
+      <div class="dot" id="syncDot" style="background:#6b7280"></div>
+      <span id="syncTxt">Syncing...</span>
+    </div>
     <button class="xbtn" onclick="manualSync()" title="Sync with team database" style="background:transparent;border:1px solid rgba(255,255,255,0.2);color:#fff;padding:6px 12px;border-radius:6px;font-size:12px;cursor:pointer">↻ Sync</button>
     <button class="xbtn" id="exportBtn" onclick="exportXL()" disabled>↓ Export</button>
   </div>
@@ -701,9 +705,18 @@ async function sbLoadAll(){
       aliases = [...al.map(a=>({from:a.from,to:a.to})), ...missing];
     }
     console.log('✓ Supabase loaded:', invoices.length, 'invoices');
+    // Update sync indicator
+    const dot = document.getElementById('syncDot');
+    const txt = document.getElementById('syncTxt');
+    if(dot) dot.style.background = '#10b981';
+    if(txt) txt.textContent = invoices.length + ' invoices';
     return true;
   } catch(err){
     console.error('Supabase load error:', err.message);
+    const dot = document.getElementById('syncDot');
+    const txt = document.getElementById('syncTxt');
+    if(dot) dot.style.background = '#ef4444';
+    if(txt) txt.textContent = 'Offline';
     return false;
   }
 }
@@ -771,8 +784,16 @@ function applyAliasesToAll(){
   });
   // Save all to Supabase after batch upload completes
 localStorage.setItem('ck_inv',JSON.stringify(invoices));
-sbSaveInvoices().then(()=>{ toast('✓ Invoices synced to team database','ok'); });
 renderTbl();updateStats();renderEmployee();setTimeout(checkAutoArchive,500);
+// Explicitly await Supabase save and confirm
+(async()=>{
+  try {
+    await sbSaveInvoices();
+    toast('✓ Saved & synced to team database','ok');
+  } catch(e) {
+    toast('⚠️ Saved locally — sync to team failed: '+e.message,'wrn');
+  }
+})();
 
   if(changed){
     // Show what changed
@@ -1108,7 +1129,7 @@ function handleRcvDash(id,field,val){
   if(!inv) return;
   inv[field]=val===''?'':toNum(val);
   inv[field+'ts']=val&&val!==''?fmtTs(new Date()):'';
-  save();
+  save(); // saves locally + queues Supabase sync
 
   // Fast targeted DOM update — no full re-render, no scroll jump
   const st=getStatus(inv);
