@@ -422,13 +422,13 @@ tbody tr:hover .delbtn,tbody tr:hover .editbtn{opacity:1;}
 
 <!-- ═══ INVOICES PAGE ═══ -->
 <div class="page active" id="page-invoices">
-  <div class="dz" id="dz">
+  <div class="dz" id="dz" onclick="document.getElementById('fi').click()">
     <span class="dz-icon">📂</span>
     <div class="dz-title">Drop invoices here</div>
     <div class="dz-sub">Drag &amp; drop or tap to upload PDF invoices &nbsp;·&nbsp; Duplicates skipped automatically</div>
     <div style="display:flex;gap:10px;justify-content:center;margin-top:12px;flex-wrap:wrap">
-      <button onclick="document.getElementById('fi').click()" style="background:var(--blue);color:#fff;border:none;padding:10px 22px;border-radius:7px;font-family:Inter,sans-serif;font-size:13px;font-weight:600;cursor:pointer">📁 Choose Files</button>
-      <button onclick="document.getElementById('fi-camera').click()" style="background:var(--surface2);color:var(--text);border:1px solid var(--border2);padding:10px 22px;border-radius:7px;font-family:Inter,sans-serif;font-size:13px;font-weight:600;cursor:pointer">📷 Use Camera</button>
+      <button onclick="event.stopPropagation();document.getElementById('fi').click()" style="background:var(--blue);color:#fff;border:none;padding:10px 22px;border-radius:7px;font-family:Inter,sans-serif;font-size:13px;font-weight:600;cursor:pointer">📁 Choose Files</button>
+      <button onclick="event.stopPropagation();document.getElementById('fi-camera').click()" style="background:var(--surface2);color:var(--text);border:1px solid var(--border2);padding:10px 22px;border-radius:7px;font-family:Inter,sans-serif;font-size:13px;font-weight:600;cursor:pointer">📷 Use Camera</button>
     </div>
     <input type="file" id="fi" multiple accept=".pdf,image/*" />
   </div>
@@ -1351,7 +1351,7 @@ function renderTbl(){
       :'<span class="badge badge-gray" style="font-size:10px;padding:1px 7px">Pending</span>';
 
     // Vendor group header row
-    html+=`<tr class="vg-hdr" onclick="toggleVendorGroup('${vid}',this)">
+    html+=`<tr class="${isMobile ? 'vg-hdr open' : 'vg-hdr'}" onclick="toggleVendorGroup('${vid}',this)">
       <td colspan="8">
         <span class="vg-toggle">▶</span>
         <strong>${esc(vendor)}</strong>
@@ -1360,8 +1360,9 @@ function renderTbl(){
       </td>
     </tr>`;
 
-    // Invoice rows for this vendor
-    html+=`<tbody class="vg-rows collapsed" id="${vid}">`;
+    // On mobile: start open. On desktop: start collapsed.
+    const isMobile = window.innerWidth <= 600;
+    html+=`<tbody class="vg-rows${isMobile ? '' : ' collapsed'}" id="${vid}">`;
     vinvs.forEach(x=>{
       const st=getStatus(x);
       const boxes=toNum(x.boxes);
@@ -1405,6 +1406,9 @@ function renderTbl(){
 
   tbody.innerHTML=html;
   document.getElementById('exportBtn').disabled=false;
+  // Show tap hint on mobile if groups are collapsed
+  const hint = document.getElementById('mobileHint');
+  if(hint) hint.style.display = (window.innerWidth <= 600 ? 'none' : 'block');
 }
 
 function toggleVendorGroup(vid, hdrEl){
