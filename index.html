@@ -431,6 +431,7 @@ tbody tr:hover .delbtn,tbody tr:hover .editbtn{opacity:1;}
       <button onclick="event.stopPropagation();document.getElementById('fi-camera').click()" style="background:var(--surface2);color:var(--text);border:1px solid var(--border2);padding:10px 22px;border-radius:7px;font-family:Inter,sans-serif;font-size:13px;font-weight:600;cursor:pointer">📷 Use Camera</button>
     </div>
     <input type="file" id="fi" multiple accept=".pdf,image/*" />
+    <input type="file" id="fi-camera" multiple accept="image/*" capture="environment" style="display:none" />
   </div>
 
   <div class="sbar">
@@ -719,10 +720,28 @@ async function sbLoadAll(){
     return false;
   }
 }
+
+async function sbSaveApiKey(key){
+  try{
+    await supa.from('settings').upsert({key:'api_key',value:key},{onConflict:'key'});
+    console.log('API key saved to team settings');
+  }catch(e){ console.log('Could not save API key:', e.message); }
+}
+
+async function sbLoadApiKey(){
+  try{
+    const {data,error} = await supa.from('settings').select('value').eq('key','api_key').single();
+    if(!error && data && data.value){
+      localStorage.setItem('ck_key', data.value);
+      return data.value;
+    }
+  }catch(e){ console.log('No shared API key yet'); }
+  return null;
+}
 // ─── END SUPABASE ─────────────────────────────────────────────────────────────
 
 // ─── STATE ────────────────────────────────────────────────────────────────────
-let invoices = JSON.parse(localStorage.getItem('ck_inv') || '[]');
+let invoices = [];
 // Default aliases — these are the baseline. User changes are saved on top.
 const DEFAULT_ALIASES = [
   {from:'hair zone',       to:'Sensationnel'},
@@ -902,11 +921,11 @@ function closeM(id){document.getElementById(id).classList.remove('show');}
 function getKey(){return localStorage.getItem('ck_key')||'';}
 function saveKey(){
   const k=document.getElementById('apiIn').value.trim();
-  if(!k.startsWith('sk-')) { toast('Invalid API key format','wrn'); return; }
-  localStorage.setItem('ck_key', k);
-  sbSaveApiKey(k); // share with all team devices
-  updateKeyUI(); closeM('apiMod');
-  toast('API key saved & shared with team','ok');
+  if(!k.startsWith('sk-')){toast('Invalid key — must start with sk-','wrn');return;}
+  localStorage.setItem('ck_key',k);
+  sbSaveApiKey(k);
+  updateKeyUI();closeM('apiMod');
+  toast('✓ API key saved & shared with all team devices','ok');
 }
 function updateKeyUI(){
   const k=getKey();
@@ -1861,7 +1880,7 @@ function renderEmpWeekly(){
 
 // ─── ARCHIVE ────────────────────────────────────────────────────────────────────
 // Archive storage: array of {weekKey, weekLabel, archivedAt, invoices:[]}
-let archived = JSON.parse(localStorage.getItem('ck_archived') || '[]');
+let archived = [];
 
 function saveArchive(){ localStorage.setItem('ck_archived', JSON.stringify(archived)); sbSaveArchive(); }
 
@@ -2047,7 +2066,7 @@ updateKeyUI();
   if(!ok){
     invoices=JSON.parse(localStorage.getItem('ck_inv')||'[]');
     archived=JSON.parse(localStorage.getItem('ck_archived')||'[]');
-    toast('⚠️ Offline mode — showing local data only','wrn');
+    toast('⚠️ Offline — showing local data only','wrn');
   } else {
     toast('✓ Connected — '+invoices.length+' invoices loaded','ok');
   }
