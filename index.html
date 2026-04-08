@@ -723,19 +723,21 @@ async function sbLoadAll(){
 
 async function sbSaveApiKey(key){
   try{
-    await supa.from('settings').upsert({key:'api_key',value:key},{onConflict:'key'});
-    console.log('API key saved to team settings');
+    const {error} = await supa.from('settings').upsert({key:'api_key',value:key},{onConflict:'key'});
+    if(error) console.log('Settings table not ready yet — API key stored locally only');
+    else console.log('API key saved to team settings');
   }catch(e){ console.log('Could not save API key:', e.message); }
 }
 
 async function sbLoadApiKey(){
   try{
-    const {data,error} = await supa.from('settings').select('value').eq('key','api_key').single();
+    // Use maybeSingle() so missing rows return null instead of 406 error
+    const {data,error} = await supa.from('settings').select('value').eq('key','api_key').maybeSingle();
     if(!error && data && data.value){
       localStorage.setItem('ck_key', data.value);
       return data.value;
     }
-  }catch(e){ console.log('No shared API key yet'); }
+  }catch(e){ /* settings table may not exist yet — safe to ignore */ }
   return null;
 }
 // ─── END SUPABASE ─────────────────────────────────────────────────────────────
