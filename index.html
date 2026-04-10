@@ -272,35 +272,6 @@ tbody tr:hover .delbtn,tbody tr:hover .editbtn{opacity:1;}
 .alias-add-btn{background:var(--blue);color:#fff;border:none;padding:8px 14px;font-size:12px;font-weight:600;cursor:pointer;border-radius:6px;white-space:nowrap;}
 .alias-add-btn:hover{background:#2563eb;}
 
-/* ── ARCHIVE ── */
-.arch-week{background:var(--surface);border:1px solid var(--border);border-radius:10px;overflow:hidden;box-shadow:var(--shadow);margin-bottom:14px;opacity:0.85;}
-.arch-week:hover{opacity:1;}
-.arch-hdr{display:flex;align-items:center;justify-content:space-between;padding:11px 18px;background:var(--surface2);border-bottom:1px solid var(--border);flex-wrap:wrap;gap:8px;cursor:pointer;}
-.arch-label{font-family:'Fraunces',serif;font-size:14px;color:var(--navy);font-weight:600;display:flex;align-items:center;gap:8px;}
-.arch-meta{display:flex;gap:14px;font-size:11px;color:var(--text3);}
-.arch-meta span strong{color:var(--text2);}
-.arch-body{display:none;}
-.arch-body.open{display:block;overflow-x:auto;}
-.arch-tbl{width:100%;border-collapse:collapse;font-size:12px;min-width:700px;}
-.arch-tbl th{background:var(--surface2);padding:8px 14px;font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.05em;color:var(--text2);border-bottom:1px solid var(--border);text-align:left;}
-.arch-tbl td{padding:9px 14px;border-bottom:1px solid var(--border);color:var(--text2);}
-.arch-tbl tr:last-child td{border-bottom:none;}
-.arch-empty{text-align:center;padding:52px 20px;color:var(--text3);}
-.arch-empty p{font-size:13px;margin-top:8px;}
-.arch-restore-btn{background:transparent;border:1px solid var(--border2);color:var(--text2);padding:4px 12px;font-family:'Inter',sans-serif;font-size:11px;cursor:pointer;border-radius:5px;transition:all .2s;}
-.arch-restore-btn:hover{border-color:var(--blue);color:var(--blue);}
-.arch-banner{background:var(--green-dim);border:1px solid #86efac;border-radius:8px;padding:12px 18px;margin-bottom:18px;font-size:12px;color:var(--green);display:flex;align-items:center;gap:8px;}
-
-/* ── VENDOR GROUP TABLE ── */
-.vg-hdr{background:var(--surface2);cursor:pointer;user-select:none;}
-.vg-hdr:hover{background:var(--surface3);}
-.vg-hdr td{padding:9px 14px;font-size:12px;font-weight:600;color:var(--navy);border-bottom:1px solid var(--border);}
-.vg-hdr .vg-toggle{font-size:11px;color:var(--text3);margin-right:6px;transition:transform .2s;display:inline-block;}
-.vg-hdr.open .vg-toggle{transform:rotate(90deg);}
-.vg-rows{display:table-row-group;}
-.vg-rows.collapsed{display:none;}
-.vg-subtotal td{background:var(--surface2)!important;font-size:11px;color:var(--text3);border-top:1px dashed var(--border)!important;}
-
 /* ── EMPLOYEE VIEW ── */
 .alert-banner{background:#fff7ed;border:1px solid #fed7aa;border-radius:10px;padding:16px 20px;margin-bottom:20px;box-shadow:var(--shadow);animation:fadeIn .3s ease;}
 .alert-title{display:flex;align-items:center;gap:8px;font-size:14px;font-weight:600;color:#c2410c;margin-bottom:10px;}
@@ -339,60 +310,6 @@ tbody tr:hover .delbtn,tbody tr:hover .editbtn{opacity:1;}
   .logo span{display:none;}
   .tabs{position:static;transform:none;}
 }
-
-/* ── MOBILE (phones) ── */
-@media(max-width:600px){
-  header{
-    padding:0 12px;
-    flex-wrap:wrap;
-    height:auto;
-    gap:0;
-  }
-  .logo{font-size:14px;padding:10px 0;}
-  .logo span{display:none;}
-  .tabs{
-    position:static;transform:none;
-    width:100%;overflow-x:auto;
-    display:flex;flex-wrap:nowrap;
-    scrollbar-width:none;
-    border-top:1px solid rgba(255,255,255,0.1);
-  }
-  .tabs::-webkit-scrollbar{display:none;}
-  .tab-btn{
-    font-size:11px;padding:10px 12px;white-space:nowrap;flex-shrink:0;
-  }
-  .header-actions{
-    position:static;
-    padding:8px 0;
-    gap:6px;
-    flex-wrap:wrap;
-    width:100%;
-    justify-content:flex-end;
-  }
-  .page{padding:12px 10px;}
-  .sbar,.dash-kpi,.emp-kpi{grid-template-columns:repeat(2,1fr);gap:8px;}
-  .sc,.kpi{padding:12px;}
-  .sv{font-size:20px;}
-  .card{border-radius:8px;overflow:hidden;}
-  /* Drop zone mobile */
-  .dz{padding:24px 16px;min-height:100px;}
-  .dz-title{font-size:14px;}
-  .dz-sub{font-size:11px;}
-  /* Table horizontal scroll */
-  .card{overflow-x:auto;}
-  table{min-width:500px;}
-  /* Weekly tracker horizontal scroll */
-  .week-body{overflow-x:auto;}
-  .week-tbl{min-width:700px;}
-  /* KPI single column on very small */
-  .week-pills{gap:4px;}
-  .week-pill{font-size:10px;padding:2px 8px;}
-  /* Action buttons larger touch targets */
-  .editbtn,.delbtn{padding:8px;font-size:14px;}
-  .tab-btn.active::after{display:none;}
-  /* Modal full width on mobile */
-  .modal{width:95vw!important;max-height:90vh;overflow-y:auto;}
-}
 </style>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 </head>
@@ -404,7 +321,6 @@ tbody tr:hover .delbtn,tbody tr:hover .editbtn{opacity:1;}
     <button class="tab-btn active" onclick="showPage('invoices',this)">📄 Invoices</button>
     <button class="tab-btn" onclick="showPage('dashboard',this)">📊 Dashboard</button>
     <button class="tab-btn" onclick="showPage('employee',this)">👤 Receiving</button>
-    <button class="tab-btn" onclick="showPage('archive',this)">📁 Archive</button>
   </div>
   <div class="hdr-right">
     <div class="api-pill" onclick="openM('aliasModal')" title="Manage vendor aliases">⚙ Aliases</div>
@@ -413,9 +329,9 @@ tbody tr:hover .delbtn,tbody tr:hover .editbtn{opacity:1;}
     </div>
     <div class="api-pill" id="syncStatus" style="cursor:default">
       <div class="dot" id="syncDot" style="background:#6b7280"></div>
-      <span id="syncTxt">Syncing...</span>
+      <span id="syncTxt">Loading...</span>
     </div>
-    <button class="xbtn" onclick="manualSync()" title="Sync with team database" style="background:transparent;border:1px solid rgba(255,255,255,0.2);color:#fff;padding:6px 12px;border-radius:6px;font-size:12px;cursor:pointer">↻ Sync</button>
+    <button class="xbtn" onclick="manualSync()" style="background:transparent;border:1px solid rgba(255,255,255,0.2);color:#fff">↻ Sync</button>
     <button class="xbtn" id="exportBtn" onclick="exportXL()" disabled>↓ Export</button>
   </div>
 </header>
@@ -425,11 +341,7 @@ tbody tr:hover .delbtn,tbody tr:hover .editbtn{opacity:1;}
   <div class="dz" id="dz" onclick="document.getElementById('fi').click()">
     <span class="dz-icon">📂</span>
     <div class="dz-title">Drop invoices here</div>
-    <div class="dz-sub">Drag &amp; drop or tap to upload PDF invoices &nbsp;·&nbsp; Duplicates skipped automatically</div>
-    <div style="display:flex;gap:10px;justify-content:center;margin-top:12px;flex-wrap:wrap">
-      <button onclick="event.stopPropagation();document.getElementById('fi').click()" style="background:var(--blue);color:#fff;border:none;padding:10px 22px;border-radius:7px;font-family:Inter,sans-serif;font-size:13px;font-weight:600;cursor:pointer">📁 Choose Files</button>
-      <button onclick="event.stopPropagation();document.getElementById('fi-camera').click()" style="background:var(--surface2);color:var(--text);border:1px solid var(--border2);padding:10px 22px;border-radius:7px;font-family:Inter,sans-serif;font-size:13px;font-weight:600;cursor:pointer">📷 Use Camera</button>
-    </div>
+    <div class="dz-sub">Drag &amp; drop <strong>PDF files</strong> — one or hundreds at once &nbsp;·&nbsp; Duplicates skipped automatically</div>
     <input type="file" id="fi" multiple accept=".pdf,image/*" />
   </div>
 
@@ -457,13 +369,12 @@ tbody tr:hover .delbtn,tbody tr:hover .editbtn{opacity:1;}
     <div class="tw">
       <table id="mainTbl">
         <thead><tr>
-          <th style="padding-left:28px">Date</th>
-          <th>Invoice #</th>
+          <th onclick="doSort('vendor')">Vendor <span class="arr">↕</span></th>
+          <th onclick="doSort('date')" class="sorted">Date <span class="arr">↓</span></th>
+          <th onclick="doSort('invoice')">Invoice # <span class="arr">↕</span></th>
           <th class="nc">File</th>
-          <th style="text-align:center">Boxes</th>
-          <th style="text-align:center;font-size:11px">Items<br><span style="font-size:9px;color:var(--text3);font-weight:400">~approx</span></th>
-          <th style="text-align:right">Total</th>
-          <th style="text-align:center">Status</th>
+          <th onclick="doSort('boxes')" style="text-align:center">Boxes <span class="arr">↕</span></th>
+          <th onclick="doSort('amount')" style="text-align:right">Total <span class="arr">↕</span></th>
           <th class="nc" style="width:60px;text-align:center">Actions</th>
         </tr></thead>
         <tbody id="tBody"></tbody>
@@ -540,18 +451,6 @@ tbody tr:hover .delbtn,tbody tr:hover .editbtn{opacity:1;}
 
 </div>
 
-<!-- ═══ ARCHIVE PAGE ═══ -->
-<div class="page" id="page-archive">
-  <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:20px;flex-wrap:wrap;gap:10px">
-    <div>
-      <div style="font-family:'Fraunces',serif;font-size:22px;color:var(--navy);font-weight:700">📁 Archived Weeks</div>
-      <div style="font-size:12px;color:var(--text3);margin-top:3px">Completed weeks are automatically archived every Monday. Click any week to expand.</div>
-    </div>
-    <button class="btn-outline" onclick="exportArchiveXL()" id="archExportBtn">↓ Export Archive</button>
-  </div>
-  <div id="archContent"></div>
-</div>
-
 <!-- ═══ MODALS ═══ -->
 <div class="ov" id="apiMod">
   <div class="modal">
@@ -592,8 +491,6 @@ tbody tr:hover .delbtn,tbody tr:hover .editbtn{opacity:1;}
     <input type="text" id="edit-invoice" placeholder="Invoice number" />
     <label class="modal-label">Boxes</label>
     <input type="number" id="edit-boxes" placeholder="Number of boxes" min="0" />
-    <label class="modal-label">Items Shipped <span style="font-size:10px;color:var(--text3)">(approx qty)</span></label>
-    <input type="number" id="edit-qty" placeholder="Total items/pieces shipped" min="0" />
     <label class="modal-label">Total Amount</label>
     <input type="text" id="edit-total" placeholder="e.g. $1,234.56" />
     <div class="mbtns"><button class="bs" onclick="closeM('editMod')">Cancel</button><button class="bp" onclick="saveEdit()">Save Changes</button></div>
@@ -624,11 +521,8 @@ tbody tr:hover .delbtn,tbody tr:hover .editbtn{opacity:1;}
       </div>
     </div>
     <div style="margin-top:14px;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px">
-      <button class="bs" onclick="applyAliasesToAll()" style="font-size:12px">↺ Apply to All Existing</button>
-      <div style="display:flex;gap:8px">
-        <button class="bs" onclick="resetAliasesToDefault()" style="font-size:11px;color:var(--text3)">Reset Defaults</button>
-        <button class="bp" onclick="closeM('aliasModal')">Done</button>
-      </div>
+      <button class="bs" onclick="applyAliasesToAll()" style="font-size:12px">↺ Apply Aliases to All Existing</button>
+      <button class="bp" onclick="closeM('aliasModal')">Done</button>
     </div>
   </div>
 </div>
@@ -641,124 +535,78 @@ const SUPA_URL = 'https://ucqathphqoijoadxqwja.supabase.co';
 const SUPA_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InVjcWF0aHBocW9pam9hZHhxd2phIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzU1OTY4NTEsImV4cCI6MjA5MTE3Mjg1MX0.Rp6eDFDrs1eVRC1w6ULrHBBqL9jBYHPoIS-xddvl9MQ';
 const supa = supabase.createClient(SUPA_URL, SUPA_KEY);
 
-async function sbSaveInvoices(){
+async function sbSave(){
   if(!invoices.length) return;
   const rows = invoices.map(x=>({
-    id: String(x.id).replace('.','_'), vendor: x.vendor||'', date: x.date||'',
+    id: String(x.id).replace('.','_'),
+    vendor: x.vendor||'', date: x.date||'',
     invoice_number: x.invoice_number||'', filename: x.filename||'',
     boxes: String(x.boxes||''), total: x.total||'',
     qty_shipped: String(x.qty_shipped||''),
     added_at: x.addedAt||new Date().toISOString(),
-    rcv1: String(x.rcv1||''), rcv1ts: x.rcv1ts||'',
-    rcv2: String(x.rcv2||''), rcv2ts: x.rcv2ts||'',
-    rcv3: String(x.rcv3||''), rcv3ts: x.rcv3ts||'',
+    rcv1:String(x.rcv1||''),rcv1ts:x.rcv1ts||'',
+    rcv2:String(x.rcv2||''),rcv2ts:x.rcv2ts||'',
+    rcv3:String(x.rcv3||''),rcv3ts:x.rcv3ts||'',
   }));
-  const {error} = await supa.from('invoices').upsert(rows, {onConflict:'id'});
-  if(error) console.error('Supabase save error:', error.message);
+  const {error} = await supa.from('invoices').upsert(rows,{onConflict:'id'});
+  if(error) console.error('sbSave error:',error.message);
 }
 
-async function sbDeleteInvoice(id){
-  await supa.from('invoices').delete().eq('id', String(id).replace('.','_'));
+async function sbDelete(id){
+  await supa.from('invoices').delete().eq('id',String(id).replace('.','_'));
 }
 
-async function sbSaveArchive(){
-  if(!archived.length) return;
-  const rows = archived.map(a=>({
-    week_key: a.weekKey, week_label: a.weekLabel,
-    archived_at: a.archivedAt, invoices: a.invoices
-  }));
-  await supa.from('archived_weeks').upsert(rows, {onConflict:'week_key'});
-}
-
-async function sbSaveAliases(){
-  await supa.from('aliases').delete().neq('id', 0);
-  if(!aliases.length) return;
-  await supa.from('aliases').insert(aliases.map(a=>({'from':a.from,'to':a.to})));
-}
-
-async function sbLoadAll(){
+async function sbLoad(){
   try{
-    const {data:inv, error:e1} = await supa.from('invoices').select('*').order('added_at',{ascending:false});
-    if(e1) throw e1;
-    if(inv && inv.length){
-      invoices = inv.map(r=>({
-        id:r.id, vendor:r.vendor, date:r.date, // id stored as-is from Supabase
-        invoice_number:r.invoice_number, filename:r.filename,
-        boxes:r.boxes, total:r.total, qty_shipped:r.qty_shipped,
-        addedAt:r.added_at,
-        rcv1:r.rcv1||'', rcv1ts:r.rcv1ts||'',
-        rcv2:r.rcv2||'', rcv2ts:r.rcv2ts||'',
-        rcv3:r.rcv3||'', rcv3ts:r.rcv3ts||'',
-      }));
-    }
-    const {data:arch} = await supa.from('archived_weeks').select('*');
-    if(arch && arch.length){
-      archived = arch.map(r=>({
-        weekKey:r.week_key, weekLabel:r.week_label,
-        archivedAt:r.archived_at, invoices:r.invoices||[]
-      }));
-    }
-    const {data:al} = await supa.from('aliases').select('*');
-    if(al && al.length){
-      const saved = new Set(al.map(a=>a.from.toLowerCase().trim()));
-      const missing = DEFAULT_ALIASES.filter(d=>!saved.has(d.from.toLowerCase().trim()));
-      aliases = [...al.map(a=>({from:a.from,to:a.to})), ...missing];
-    }
-    console.log('✓ Supabase loaded:', invoices.length, 'invoices');
-    // Update sync indicator
-    const dot = document.getElementById('syncDot');
-    const txt = document.getElementById('syncTxt');
-    if(dot) dot.style.background = '#10b981';
-    if(txt) txt.textContent = invoices.length + ' invoices';
+    const {data,error} = await supa.from('invoices').select('*').order('added_at',{ascending:false});
+    if(error) throw error;
+    invoices = (data||[]).map(r=>({
+      id:r.id, vendor:r.vendor, date:r.date,
+      invoice_number:r.invoice_number, filename:r.filename,
+      boxes:r.boxes, total:r.total, qty_shipped:r.qty_shipped,
+      addedAt:r.added_at,
+      rcv1:r.rcv1||'',rcv1ts:r.rcv1ts||'',
+      rcv2:r.rcv2||'',rcv2ts:r.rcv2ts||'',
+      rcv3:r.rcv3||'',rcv3ts:r.rcv3ts||'',
+    }));
+    const dot=document.getElementById('syncDot');
+    const txt=document.getElementById('syncTxt');
+    if(dot) dot.style.background='#22c55e';
+    if(txt) txt.textContent=invoices.length+' invoices';
+    console.log('✓ Loaded',invoices.length,'invoices');
     return true;
-  } catch(err){
-    console.error('Supabase load error:', err.message);
-    const dot = document.getElementById('syncDot');
-    const txt = document.getElementById('syncTxt');
-    if(dot) dot.style.background = '#ef4444';
-    if(txt) txt.textContent = 'Offline';
+  }catch(e){
+    console.error('sbLoad error:',e.message);
+    const dot=document.getElementById('syncDot');
+    if(dot) dot.style.background='#ef4444';
     return false;
   }
 }
 
-async function sbSaveApiKey(key){
-  try{
-    await supa.from('settings').upsert({key:'api_key',value:key},{onConflict:'key'});
-  }catch(e){ console.log('sbSaveApiKey error:',e.message); }
+async function sbSaveKey(key){
+  try{ await supa.from('settings').upsert({key:'api_key',value:key},{onConflict:'key'}); }catch(e){}
 }
 
-async function sbLoadApiKey(){
+async function sbLoadKey(){
   try{
-    const {data,error} = await supa.from('settings').select('value').eq('key','api_key').maybeSingle();
-    if(!error && data && data.value) return data.value;
+    const {data,error}=await supa.from('settings').select('value').eq('key','api_key').maybeSingle();
+    if(!error&&data&&data.value) return data.value;
   }catch(e){}
   return null;
 }
 // ─── END SUPABASE ─────────────────────────────────────────────────────────────
 
 // ─── STATE ────────────────────────────────────────────────────────────────────
-let invoices = []; // always load from Supabase on init
-// Default aliases — these are the baseline. User changes are saved on top.
-const DEFAULT_ALIASES = [
+let invoices = [];
+let aliases  = JSON.parse(localStorage.getItem('ck_aliases') || JSON.stringify([
   {from:'hair zone',       to:'Sensationnel'},
   {from:'hairzone',        to:'Sensationnel'},
   {from:'sun taiyang',     to:'Outre'},
   {from:'sp imports',      to:'SP Imports / Super Prima'},
   {from:'super prima',     to:'SP Imports / Super Prima'},
-  {from:'ivy kiss',        to:'RED BEAUTY (Ivy Kiss)'},
-  {from:'red beauty',      to:'RED BEAUTY (Ivy Kiss)'}
-];
-// Load saved aliases — if user has saved custom aliases, use those
-// Otherwise start with defaults. Merge: saved aliases take priority.
-function loadAliases(){
-  const saved = JSON.parse(localStorage.getItem('ck_aliases') || 'null');
-  if(!saved) return [...DEFAULT_ALIASES];
-  // Merge: keep all saved, add any defaults not already covered by saved
-  const savedFroms = new Set(saved.map(a=>a.from.toLowerCase().trim()));
-  const missing = DEFAULT_ALIASES.filter(d => !savedFroms.has(d.from.toLowerCase().trim()));
-  return [...saved, ...missing];
-}
-let aliases = loadAliases();
+  {from:'ivy kiss',        to:'Red Beauty (Ivy Kiss)'},
+  {from:'red beauty',      to:'Red Beauty (Ivy Kiss)'}
+]));
 let sortCol='date', sortDir='desc', searchQ='', newIds=new Set();
 let pendingDel=null, pendingEdit=null, dashF='all', weekF='all';
 let chartD=null, chartB=null;
@@ -774,16 +622,7 @@ function applyAlias(name){
   }
   return name;
 }
-function saveAliases(){
-  localStorage.setItem('ck_aliases',JSON.stringify(aliases));
-  sbSaveAliases();
-}
-function resetAliasesToDefault(){
-  aliases = [...DEFAULT_ALIASES];
-  saveAliases();
-  renderAliasList();
-  toast('Aliases reset to defaults','ok');
-}
+function saveAliases(){localStorage.setItem('ck_aliases',JSON.stringify(aliases));}
 function applyAliasesToAll(){
   let changed=0;
   const changes=[];
@@ -796,18 +635,7 @@ function applyAliasesToAll(){
       changed++;
     }
   });
-  // Save all to Supabase after batch upload completes
-localStorage.setItem('ck_inv',JSON.stringify(invoices));
-renderTbl();updateStats();renderEmployee();setTimeout(checkAutoArchive,500);
-// Explicitly await Supabase save and confirm
-(async()=>{
-  try {
-    await sbSaveInvoices();
-    toast('✓ Saved & synced to team database','ok');
-  } catch(e) {
-    toast('⚠️ Saved locally — sync to team failed: '+e.message,'wrn');
-  }
-})();
+  save();renderTbl();updateStats();renderEmployee();
 
   if(changed){
     // Show what changed
@@ -870,12 +698,10 @@ function renderAliasList(){
   if(!aliases.length){el.innerHTML='<div style="color:var(--text3);font-size:12px;padding:8px">No aliases yet — add some below</div>';return;}
   el.innerHTML=aliases.map((a,i)=>`
     <div class="alias-item">
-      <input class="alias-edit-inp" value="${esc(a.from)}" onchange="aliases[${i}].from=this.value.trim();saveAliases();"
-        style="flex:1;border:1px solid var(--border);border-radius:4px;padding:3px 7px;font-size:12px;background:var(--surface);color:var(--text2);font-family:Inter,sans-serif" />
+      <span class="alias-from">${esc(a.from)}</span>
       <span class="alias-arrow">→</span>
-      <input class="alias-edit-inp" value="${esc(a.to)}" onchange="aliases[${i}].to=this.value.trim();saveAliases();toast('Alias updated — click Apply to All to rename existing invoices','ok');"
-        style="flex:1;border:1px solid var(--border);border-radius:4px;padding:3px 7px;font-size:12px;background:var(--surface);color:var(--text);font-family:Inter,sans-serif" />
-      <button class="alias-del" onclick="removeAlias(${i})" title="Remove">✕</button>
+      <span class="alias-to">${esc(a.to)}</span>
+      <button class="alias-del" onclick="removeAlias(${i})">✕</button>
     </div>`).join('');
 }
 
@@ -900,10 +726,8 @@ function showPage(n,btn){
   document.querySelectorAll('.tab-btn').forEach(b=>b.classList.remove('active'));
   document.getElementById('page-'+n).classList.add('active');
   btn.classList.add('active');
-  if(n==='invoices')  { renderTbl(); updateStats(); }
   if(n==='dashboard') renderDash();
   if(n==='employee')  renderEmployee();
-  if(n==='archive')   renderArchive();
 }
 
 // ─── MODALS ───────────────────────────────────────────────────────────────────
@@ -917,11 +741,11 @@ function closeM(id){document.getElementById(id).classList.remove('show');}
 function getKey(){return localStorage.getItem('ck_key')||'';}
 function saveKey(){
   const k=document.getElementById('apiIn').value.trim();
-  if(!k.startsWith('sk-')){toast('Invalid key — must start with sk-','wrn');return;}
+  if(!k.startsWith('sk-')){toast('Invalid key','wrn');return;}
   localStorage.setItem('ck_key',k);
-  sbSaveApiKey(k); // push to Supabase so all devices get it
+  sbSaveKey(k);
   updateKeyUI();closeM('apiMod');
-  toast('✓ API key saved — all team devices will use it','ok');
+  toast('✓ API key saved for all devices','ok');
 }
 function updateKeyUI(){
   const k=getKey();
@@ -931,36 +755,16 @@ function updateKeyUI(){
 
 // ─── DROP & FILE ──────────────────────────────────────────────────────────────
 const dzEl=document.getElementById('dz');
-// Prevent browser from opening files dropped anywhere on page
-document.addEventListener('dragover',  e=>{ e.preventDefault(); e.stopPropagation(); });
-document.addEventListener('dragleave', e=>{ e.preventDefault(); e.stopPropagation(); });
-document.addEventListener('drop',      e=>{ e.preventDefault(); e.stopPropagation(); });
-
-dzEl.addEventListener('dragenter', e=>{ e.preventDefault(); dzEl.classList.add('over'); });
-dzEl.addEventListener('dragover',  e=>{ e.preventDefault(); e.stopPropagation(); dzEl.classList.add('over'); });
-dzEl.addEventListener('dragleave', e=>{
-  if(!dzEl.contains(e.relatedTarget)) dzEl.classList.remove('over');
-});
-dzEl.addEventListener('drop', e=>{
-  e.preventDefault(); e.stopPropagation();
-  dzEl.classList.remove('over');
-  const allFiles = Array.from(e.dataTransfer.files);
-  if(!allFiles.length) return;
-  const accepted = allFiles.filter(f=>
-    f.type==='application/pdf' || f.type.startsWith('image/') ||
-    f.name.match(/\.pdf$/i) || f.type===''
-  );
-  const rejected = allFiles.filter(f=>!accepted.includes(f));
-  if(rejected.length) toast(`⚠️ ${rejected.length} file${rejected.length!==1?'s':''} not accepted — only PDF/image files supported`, 'wrn');
-  if(accepted.length) processFiles(accepted);
-});
+dzEl.addEventListener('dragover',e=>{e.preventDefault();dzEl.classList.add('over');});
+dzEl.addEventListener('dragleave',()=>dzEl.classList.remove('over'));
+dzEl.addEventListener('drop',e=>{e.preventDefault();dzEl.classList.remove('over');
+  const f=Array.from(e.dataTransfer.files).filter(f=>f.type==='application/pdf'||f.type.startsWith('image/'));
+  if(f.length) processFiles(f);});
 document.getElementById('fi').addEventListener('change',e=>{
-  const f=Array.from(e.target.files);if(f.length) processFiles(f);e.target.value='';});
-document.getElementById('fi-camera').addEventListener('change',e=>{
   const f=Array.from(e.target.files);if(f.length) processFiles(f);e.target.value='';});
 
 // ─── PROCESS ──────────────────────────────────────────────────────────────────
-async function processFiles(files, overrideDelay=null){
+async function processFiles(files){
   if(!getKey()){openM('apiMod');toast('Enter your API key first','wrn');return;}
   const pw=document.getElementById('pw'),bar=document.getElementById('pb'),
         lbl=document.getElementById('pLbl'),cnt=document.getElementById('pCnt'),
@@ -971,7 +775,6 @@ async function processFiles(files, overrideDelay=null){
     d.innerHTML=`<div class="spin"></div><span>${f.name}</span>`;
     lst.appendChild(d);return d;});
   let done=0,added=0,skipped=0;
-  const failedFiles=[];
   for(let i=0;i<files.length;i++){
     items[i].classList.add('going');
     lbl.textContent=`Processing: ${files[i].name}`;cnt.textContent=`${i}/${files.length}`;
@@ -994,27 +797,19 @@ async function processFiles(files, overrideDelay=null){
         }else{
           const id=Date.now()+Math.random();
           invoices.push({...res,id,addedAt:new Date().toISOString(),filename:files[i].name,
-            qty_shipped: res.qty_shipped||'',
             rcv1:'',rcv1ts:'',rcv2:'',rcv2ts:'',rcv3:'',rcv3ts:''});
           newIds.add(id);
           items[i].className='pi done';
           items[i].innerHTML=`<span>✓</span><span>${files[i].name} — <strong>${res.vendor}</strong> · ${res.total}</span>`;added++;
-          renderTbl();updateStats();
         }
       }
     }catch(e){
       items[i].className='pi err';
       items[i].innerHTML=`<span>✗</span><span>${files[i].name} — ${e.message}</span>`;
-      failedFiles.push(files[i]);
     }
     done++;bar.style.width=(done/files.length*100)+'%';cnt.textContent=`${done}/${files.length}`;
-    // Throttle: adaptive delay based on file size to avoid rate limits
-    // Larger files (multi-page PDFs) need more breathing room
-    if(i < files.length-1){
-      const fileSizeMB = files[i].size / (1024*1024);
-      const delay = overrideDelay || (fileSizeMB > 0.5 ? 3500 : 2000);
-      await sleep(delay);
-    }
+    // Throttle: wait between each file to avoid rate limits (especially large PDFs)
+    if(i < files.length-1) await sleep(1200);
   }
   save();renderTbl();updateStats();
 
@@ -1024,7 +819,7 @@ async function processFiles(files, overrideDelay=null){
 
   if(errors.length){
     // Show persistent error panel
-    showErrorPanel(errors, failedFiles, added, skipped);
+    showErrorPanel(errors, added, skipped);
     lbl.textContent=`Done — ${added} added, ${errors.length} error${errors.length!==1?'s':''}, ${skipped} skipped.`;
     toast(`⚠️ ${errors.length} file${errors.length!==1?'s':''} failed to process`, 'err');
   } else {
@@ -1035,11 +830,8 @@ async function processFiles(files, overrideDelay=null){
   setTimeout(()=>{pw.classList.remove('show');bar.style.width='0%';lst.innerHTML='';newIds.clear();},errors.length?12000:7000);
 }
 
-// Store failed files globally so retry button can access them
-let _failedFiles = [];
-
-function showErrorPanel(errors, failedFilesArr, added, skipped){
-  _failedFiles = failedFilesArr || [];
+function showErrorPanel(errors, added, skipped){
+  // Remove existing panel
   const existing = document.getElementById('errorPanel');
   if(existing) existing.remove();
 
@@ -1049,40 +841,23 @@ function showErrorPanel(errors, failedFilesArr, added, skipped){
   panel.innerHTML = `
     <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:10px">
       <div style="font-size:13px;font-weight:600;color:#dc2626">⚠️ ${errors.length} file${errors.length!==1?'s':''} could not be processed</div>
-      <button onclick="document.getElementById('errorPanel').remove()" style="background:transparent;border:none;cursor:pointer;color:#9ca3af;font-size:16px;line-height:1;padding:0 0 0 12px">✕</button>
+      <button onclick="this.closest('#errorPanel').remove()" style="background:transparent;border:none;cursor:pointer;color:#9ca3af;font-size:16px;line-height:1;padding:0 0 0 12px">✕</button>
     </div>
-    <div style="font-size:12px;color:#7f1d1d;margin-bottom:10px">These files failed — usually due to rate limits when uploading many large PDFs at once:</div>
+    <div style="font-size:12px;color:#7f1d1d;margin-bottom:10px">These files failed — try uploading them again individually, or check that they are valid PDF/image files:</div>
     ${errors.map(e=>`<div style="font-size:11px;color:#991b1b;padding:4px 8px;background:rgba(220,38,38,0.08);border-radius:4px;margin-bottom:4px;font-family:monospace">${e}</div>`).join('')}
-    <div style="margin-top:14px;display:flex;align-items:center;gap:10px;flex-wrap:wrap">
-      <button onclick="retryFailed()" style="background:#dc2626;color:#fff;border:none;padding:8px 18px;border-radius:6px;font-family:Inter,sans-serif;font-size:12px;font-weight:600;cursor:pointer">↺ Retry ${errors.length} Failed File${errors.length!==1?'s':''}</button>
-      <span style="font-size:11px;color:#6b7280">Files will be retried one at a time with longer pauses between each</span>
-    </div>
+    <div style="margin-top:12px;font-size:11px;color:#6b7280">Tip: Large multi-page PDFs may hit rate limits. Try uploading failed files one at a time.</div>
   `;
 
+  // Insert before the table card
   const card = document.querySelector('.card');
   if(card) card.parentNode.insertBefore(panel, card);
-}
-
-async function retryFailed(){
-  if(!_failedFiles.length) return;
-  const btn=document.querySelector('#errorPanel button[onclick="retryFailed()"]');
-  if(btn){btn.textContent='⏳ Retrying...';btn.disabled=true;}
-  document.getElementById('errorPanel').remove();
-  // Process with extra long delays between each
-  await processFilesWithDelay(_failedFiles, 5000);
-  _failedFiles=[];
-}
-
-async function processFilesWithDelay(files, delayMs){
-  // Same as processFiles but with custom delay — used for retries
-  await processFiles(files, delayMs);
 }
 
 // ─── CLAUDE API ───────────────────────────────────────────────────────────────
 async function callClaude(file){
   const b64=await toB64(file);
   const mime=file.type.startsWith('image/')?file.type:'application/pdf';
-  const prompt='Extract invoice summary data and return ONLY a JSON object (no markdown, no explanation).\nFormat: {"vendor":"seller/supplier name (never Cee Kay)","date":"MM/DD/YYYY","invoice_number":"exact invoice number","boxes":"total carton/box count as integer or null","total":"final net total e.g. $1,234.56","qty_shipped":"total quantity of individual items/pieces shipped as integer — look for Total Qty, Total Qty (pcs), Total Pieces, or sum QTY SHIPPED column. null if not determinable"}\nFor multi-page invoices the total and qty are on the last page. vendor = the company selling TO Cee Kay.';
+  const prompt='Extract invoice summary data and return ONLY a JSON object (no markdown, no explanation).\nFormat: {"vendor":"seller/supplier name (never Cee Kay)","date":"MM/DD/YYYY","invoice_number":"exact invoice number","boxes":"total carton/box count as number or null","total":"final net total e.g. $1,234.56"}\nFor multi-page invoices the total is on the last page. vendor = the company selling TO Cee Kay.';
   let lastErr='';
   for(let attempt=1;attempt<=2;attempt++){
     try{
@@ -1091,36 +866,25 @@ async function callClaude(file){
         headers:{'Content-Type':'application/json','x-api-key':getKey(),
           'anthropic-version':'2023-06-01','anthropic-dangerous-direct-browser-access':'true'},
         body:JSON.stringify({model:'claude-sonnet-4-20250514',max_tokens:800,
-          messages:[{role:'user',content:
-            mime.startsWith('image/')
-              ? [{type:'image',source:{type:'base64',media_type:mime,data:b64}},{type:'text',text:prompt}]
-              : [{type:'document',source:{type:'base64',media_type:'application/pdf',data:b64}},{type:'text',text:prompt}]
-          }]})
+          messages:[{role:'user',content:[
+            {type:'document',source:{type:'base64',media_type:mime,data:b64}},
+            {type:'text',text:prompt}]}]})
       });
       if(!r.ok){
         const eb=await r.json().catch(()=>({error:{message:'HTTP '+r.status}}));
         const msg=eb.error?.message||'API error '+r.status;
-        if(r.status===429&&attempt<2){await sleep(10000);continue;}
+        if(r.status===429&&attempt<2){await sleep(6000);continue;}
         throw new Error(msg);
       }
       const d=await r.json();
-      // Safely extract text from response — handle missing content gracefully
-      if(!d.content || !d.content.length) throw new Error('Empty response from API');
-      const textBlock = d.content.find(b => b.type === 'text');
-      if(!textBlock || !textBlock.text) throw new Error('No text in API response — got: '+JSON.stringify(d.content[0]?.type));
-      const raw=textBlock.text.trim();
+      const raw=d.content[0].text.trim();
       const clean=raw.replace(/^```json\s*/,'').replace(/^```\s*/,'').replace(/```\s*$/,'').trim();
       const match=clean.match(/\{[\s\S]*\}/);
-      if(!match) throw new Error('No JSON found in response: '+clean.substring(0,80));
-      let parsed;
-      try{ parsed=JSON.parse(match[0]); }
-      catch(pe){ throw new Error('JSON parse failed: '+pe.message); }
-      if(!parsed.vendor&&!parsed.invoice_number) throw new Error('Could not extract invoice data — check file is a valid invoice');
+      if(!match) throw new Error('Unexpected response: '+clean.substring(0,100));
+      const parsed=JSON.parse(match[0]);
+      if(!parsed.vendor&&!parsed.invoice_number) throw new Error('Could not extract invoice data');
       return parsed;
-    }catch(e){
-      lastErr=e.message||String(e)||'Unknown error';
-      if(attempt<2) await sleep(3000);
-    }
+    }catch(e){lastErr=e.message;if(attempt<2) await sleep(4000);}
   }
   throw new Error(lastErr||'Failed after 2 attempts');
 }
@@ -1146,121 +910,50 @@ function handleRcvDash(id,field,val){
   if(!inv) return;
   inv[field]=val===''?'':toNum(val);
   inv[field+'ts']=val&&val!==''?fmtTs(new Date()):'';
-  save(); // saves locally + queues Supabase sync
-
-  // Fast targeted DOM update — no full re-render, no scroll jump
-  const st=getStatus(inv);
-  const rem=calcRem(inv);
-
-  // Remaining cell
-  const remEl=document.getElementById('wrem_'+safeId(id));
-  if(remEl) setWRemCell(remEl,rem,inv);
-
-  // Status badge cell
-  const stEl=document.getElementById('wst_'+safeId(id));
-  if(stEl){
-    let badge='';
-    if(st==='complete')     badge='<span class="badge badge-green">✓ Done</span>';
-    else if(st==='overage') badge='<span class="badge badge-red">⚠ Overage</span>';
-    else if(st==='partial') badge='<span class="badge badge-amber">Partial</span>';
-    else                    badge='<span class="badge badge-gray">Pending</span>';
-    stEl.innerHTML=badge;
+  save();
+  // Save scroll + focused element before re-render
+  const scrollY=window.scrollY;
+  const scrollX=window.scrollX;
+  const active=document.activeElement;
+  const activeId=active?active.id:null;
+  const activeName=active?active.name:null;
+  // Find position of focused input within its row so we can restore it
+  let focusPath=null;
+  if(active&&active.classList.contains('wrec-inp')){
+    const row=active.closest('tr');
+    if(row){
+      const inputs=Array.from(row.querySelectorAll('.wrec-inp'));
+      const inputIdx=inputs.indexOf(active);
+      const allRows=Array.from(active.closest('tbody').querySelectorAll('tr'));
+      const rowIdx=allRows.indexOf(row);
+      focusPath={rowIdx,inputIdx};
+    }
   }
-
-  // Row color
-  const row=remEl?remEl.closest('tr'):null;
-  if(row){
-    row.classList.toggle('wcomp',st==='complete');
-    row.classList.toggle('wover',st==='overage');
+  // Re-render
+  renderWeekly();
+  renderVendorAcc(buildVmap(), buildVcnt(), invoices);
+  renderEmployee();
+  // Restore scroll position
+  window.scrollTo(scrollX, scrollY);
+  // Restore focus to the same input
+  if(focusPath){
+    requestAnimationFrame(()=>{
+      const tbodies=document.querySelectorAll('#weekWrap tbody');
+      let found=false;
+      for(const tbody of tbodies){
+        const rows=Array.from(tbody.querySelectorAll('tr'));
+        if(focusPath.rowIdx < rows.length){
+          const inputs=rows[focusPath.rowIdx].querySelectorAll('.wrec-inp');
+          if(inputs[focusPath.inputIdx]){
+            inputs[focusPath.inputIdx].focus();
+            inputs[focusPath.inputIdx].select();
+            found=true;
+            break;
+          }
+        }
+      }
+    });
   }
-
-  // Timestamps
-  ['rcv1','rcv2','rcv3'].forEach(f=>{
-    const tsEl=document.getElementById('wts_'+safeId(id)+'_'+f);
-    if(tsEl) tsEl.textContent=inv[f+'ts']||'';
-  });
-
-  // Week header green when all complete
-  updateWeekHeader(id);
-
-  // Update vendor accordion row if it's open
-  updateVendorAccRow(id);
-
-  // Employee KPI (lightweight — just update 3 numbers)
-  renderEmpKpi && renderEmpKpi();
-
-  // Only full re-render employee tab if it's active
-  if(document.getElementById('page-employee')?.classList.contains('active')){
-    renderEmployee();
-  }
-}
-
-function updateWeekHeader(invId){
-  const inv=invoices.find(x=>String(x.id)===String(invId));
-  if(!inv||!inv.date) return;
-  const wkKey=getWkKey(inv.date);
-  const wkInvs=invoices.filter(x=>x.date&&getWkKey(x.date)===wkKey);
-  const allDone=wkInvs.length>0&&wkInvs.every(x=>getStatus(x)==='complete');
-  const hdr=document.querySelector('[data-wkkey="'+wkKey+'"]');
-  if(!hdr) return;
-  if(allDone){
-    hdr.style.background='linear-gradient(135deg,#15803d,#166534)';
-    const lbl=hdr.querySelector('.week-label');
-    if(lbl&&!lbl.textContent.includes('ALL COMPLETE'))
-      lbl.textContent='✅ '+lbl.textContent.replace(/^📅 /,'').replace(/ — ALL COMPLETE/,'')+' — ALL COMPLETE';
-  } else {
-    hdr.style.background='';
-    const lbl=hdr.querySelector('.week-label');
-    if(lbl&&lbl.textContent.includes('ALL COMPLETE'))
-      lbl.textContent='📅 '+lbl.textContent.replace(/^✅ /,'').replace(' — ALL COMPLETE','');
-  }
-}
-
-
-function updateVendorAccRow(invId){
-  // Find the row in the vendor accordion and update it in place
-  const inv = invoices.find(x=>String(x.id)===String(invId));
-  if(!inv) return;
-  const row = document.querySelector(`tr[data-vacc-id="${safeId(invId)}"]`);
-  if(!row) return; // accordion not open, skip
-
-  const st      = getStatus(inv);
-  const received = calcRcvd(inv);
-  const rem     = calcRem(inv);
-
-  // Badge
-  let badge = '';
-  if(st==='complete')     badge='<span class="badge badge-green">✓ Complete</span>';
-  else if(st==='overage') badge='<span class="badge badge-red">⚠ Overage</span>';
-  else if(st==='partial') badge='<span class="badge badge-amber">Partial</span>';
-  else if(toNum(inv.boxes)>0) badge='<span class="badge badge-gray">Pending</span>';
-
-  // Remaining display
-  const remDisplay = rem===null?'—'
-    : st==='complete' ? '<span class="badge badge-green">✓</span>'
-    : st==='overage'  ? '<span class="badge badge-red">+'+Math.abs(rem)+'</span>'
-    : rem;
-
-  // Update cells: [0]=date [1]=invoice# [2]=boxes [3]=received [4]=remaining [5]=badge [6]=file [7]=amount
-  const cells = row.querySelectorAll('td');
-  if(cells[3]) cells[3].textContent = received || '—';
-  if(cells[4]) cells[4].innerHTML   = remDisplay;
-  if(cells[5]) cells[5].innerHTML   = badge;
-
-  // Row color
-  row.classList.toggle('comp-row', st==='complete');
-}
-
-function manualSync(){
-  const btn = document.querySelector('.xbtn[onclick="manualSync()"]');
-  if(btn){ btn.textContent='↻ Syncing...'; btn.disabled=true; }
-  sbLoadAll().then(ok=>{
-    renderTbl(); updateStats();
-    if(document.getElementById('page-dashboard')?.classList.contains('active')) renderDash();
-    if(document.getElementById('page-employee')?.classList.contains('active')) renderEmployee();
-    if(btn){ btn.textContent='↻ Sync'; btn.disabled=false; }
-    toast(ok ? '✓ Synced with team database' : '⚠️ Sync failed — check connection','ok');
-  });
 }
 
 function buildVmap(){
@@ -1329,113 +1022,49 @@ function fmtTs(d){return d.toLocaleDateString('en-US',{month:'numeric',day:'nume
 function renderTbl(){
   const tbody=document.getElementById('tBody');
   let data=[...invoices];
-  if(searchQ){
-    const q=searchQ.toLowerCase();
-    data=data.filter(x=>(x.vendor||'').toLowerCase().includes(q)||(x.invoice_number||'').toLowerCase().includes(q)||(x.total||'').toLowerCase().includes(q));
-  }
+  if(searchQ){const q=searchQ.toLowerCase();data=data.filter(x=>(x.vendor||'').toLowerCase().includes(q)||(x.invoice_number||'').toLowerCase().includes(q)||(x.total||'').toLowerCase().includes(q));}
+  data.sort((a,b)=>{
+    let av,bv;
+    if(sortCol==='date'){av=ms(a.date);bv=ms(b.date);}
+    else if(sortCol==='amount'){av=amt(a.total);bv=amt(b.total);}
+    else if(sortCol==='boxes'){av=parseFloat(a.boxes)||0;bv=parseFloat(b.boxes)||0;}
+    else{av=(a[sortCol==='vendor'?'vendor':'invoice_number']||'').toLowerCase();bv=(b[sortCol==='vendor'?'vendor':'invoice_number']||'').toLowerCase();}
+    return sortDir==='asc'?(av<bv?-1:av>bv?1:0):(av>bv?-1:av<bv?1:0);
+  });
   if(!data.length){
-    tbody.innerHTML=`<tr><td colspan="8"><div class="empty-st"><div style="font-size:28px">📋</div><p>${invoices.length?'No results match your search':'No invoices yet — drop PDFs above to get started'}</p></div></td></tr>`;
+    tbody.innerHTML=`<tr><td colspan="7"><div class="empty-st"><div style="font-size:28px">📋</div><p>${invoices.length?'No results match your search':'No invoices yet — drop PDFs above to get started'}</p></div></td></tr>`;
     return;
   }
-
-  // Group by vendor alphabetically
-  const vendorMap={};
-  data.forEach(x=>{
-    const v=x.vendor||'Unknown';
-    if(!vendorMap[v]) vendorMap[v]=[];
-    vendorMap[v].push(x);
-  });
-  // Sort vendors A→Z
-  const vendors=Object.keys(vendorMap).sort((a,b)=>a.toLowerCase().localeCompare(b.toLowerCase()));
-  // Sort invoices within each vendor by date newest first
-  vendors.forEach(v=>vendorMap[v].sort((a,b)=>ms(b.date)-ms(a.date)));
-
   const grand=data.reduce((s,x)=>s+amt(x.total),0);
-  const totalBoxes=data.reduce((s,x)=>s+toNum(x.boxes),0);
-  const totalQty=data.reduce((s,x)=>s+toNum(x.qty_shipped),0);
-
-  let html='';
-  const isMobile = window.innerWidth <= 600;
-  vendors.forEach(vendor=>{
-    const vinvs=vendorMap[vendor];
-    const vid='vg_'+safeId(vendor);
-    const vTotal=vinvs.reduce((s,x)=>s+amt(x.total),0);
-    const vBoxes=vinvs.reduce((s,x)=>s+toNum(x.boxes),0);
-    const vStatuses=vinvs.map(x=>getStatus(x));
-    const allDone=vStatuses.every(s=>s==='complete');
-    const anyPartial=vStatuses.some(s=>s==='partial'||s==='overage');
-    const statusDot=allDone?'<span class="badge badge-green" style="font-size:10px;padding:1px 7px">✓ All Done</span>'
-      :anyPartial?'<span class="badge badge-amber" style="font-size:10px;padding:1px 7px">In Progress</span>'
-      :'<span class="badge badge-gray" style="font-size:10px;padding:1px 7px">Pending</span>';
-
-    // Vendor group header row
-    html+=`<tr class="${isMobile ? 'vg-hdr open' : 'vg-hdr'}" onclick="toggleVendorGroup('${vid}',this)">
-      <td colspan="8">
-        <span class="vg-toggle">▶</span>
-        <strong>${esc(vendor)}</strong>
-        <span style="font-weight:400;color:var(--text3);margin-left:10px;font-size:11px">${vinvs.length} invoice${vinvs.length!==1?'s':''} &nbsp;·&nbsp; ${vBoxes} boxes &nbsp;·&nbsp; $${vTotal.toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2})}</span>
-        <span style="float:right">${statusDot}</span>
-      </td>
-    </tr>`;
-
-    // On mobile: start open. On desktop: start collapsed.
-    const isMobile = window.innerWidth <= 600;
-    html+=`<tbody class="vg-rows${isMobile ? '' : ' collapsed'}" id="${vid}">`;
-    vinvs.forEach(x=>{
-      const st=getStatus(x);
+  tbody.innerHTML=data.map(x=>{
+    const st=getStatus(x);
+      const received=calcRcvd(x);
+      const rem=calcRem(x);
       const boxes=toNum(x.boxes);
-      const isComp=st==='complete';
       let badge='';
-      if(st==='complete')     badge='<span class="badge badge-green">✓ Done</span>';
+      if(st==='complete')     badge='<span class="badge badge-green">✓ Complete</span>';
       else if(st==='overage') badge='<span class="badge badge-red">⚠ Overage</span>';
       else if(st==='partial') badge='<span class="badge badge-amber">Partial</span>';
       else if(boxes>0)        badge='<span class="badge badge-gray">Pending</span>';
-
-      // Invoice # as blue link (opens file if stored, otherwise just styled)
-      const invNumDisplay=`<span style="color:var(--blue);font-weight:500">${esc(x.invoice_number||'—')}</span>`;
-
-      html+=`<tr data-id="${x.id}" class="${isComp?'comp-row':''}">
-        <td class="td-v" style="padding-left:28px;color:var(--text3);font-size:11px">${esc(x.date||'—')}</td>
-        <td class="td-i">${invNumDisplay}${newIds.has(x.id)?'<span class="new-tag">new</span>':''}</td>
-        <td><div class="fname" title="${esc(x.filename||'')}">${x.filename?'📎 '+esc(x.filename.length>18?x.filename.substring(0,16)+'…':x.filename):'—'}</div></td>
-        <td class="td-b" style="text-align:center">${boxes||'—'}</td>
-        <td style="text-align:center;color:${x.qty_shipped?'var(--text)':'var(--text3)'}">
-          ${x.qty_shipped||'<span style="font-size:10px;color:var(--text3)">—</span>'}
-        </td>
-        <td class="td-a">${esc(x.total||'—')}</td>
+      const remDisplay=rem===null?'—':st==='complete'?'<span class="badge badge-green">✓</span>':st==='overage'?'<span class="badge badge-red">+'+Math.abs(rem)+'</span>':rem;
+      return `<tr>
+        <td class="vd">${esc(x.date||'—')}</td>
+        <td class="vi">${esc(x.invoice_number||'—')}</td>
+        <td style="text-align:center">${boxes||'—'}</td>
+        <td style="text-align:center">${received||'—'}</td>
+        <td style="text-align:center">${remDisplay}</td>
         <td style="text-align:center">${badge}</td>
-        <td><div class="action-cell">
-          <button class="editbtn" onclick="openEdit('${x.id}')" title="Edit">✏️</button>
-          <button class="delbtn" onclick="askDel('${x.id}','${esc((x.vendor||'').replace(/'/g,"\'"))}')">✕</button>
-        </div></td>
+        <td style="font-size:10px;color:var(--text3)">${x.filename?'📎 '+esc(x.filename.length>22?x.filename.substring(0,20)+'…':x.filename):'—'}</td>
+        <td class="va">$${amt(x.total).toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2})}</td>
       </tr>`;
-    });
-    html+='</tbody>';
-  });
-
-  // Grand total row
-  html+=`<tr class="tot-row">
-    <td colspan="3" style="font-size:11px;color:var(--text2)">TOTAL — ${data.length} invoice${data.length!==1?'s':''} across ${vendors.length} vendor${vendors.length!==1?'s':''}</td>
-    <td style="text-align:center;font-weight:600">${totalBoxes||'—'}</td>
-    <td style="text-align:center;font-weight:600;color:var(--text2)">${totalQty||'—'}</td>
+  }).join('')+`<tr class="tot-row">
+    <td colspan="3" style="font-size:11px;color:var(--text2)">TOTAL — ${data.length} invoice${data.length!==1?'s':''}</td>
+    <td style="text-align:center">${data.reduce((s,x)=>s+(parseFloat(x.boxes)||0),0)} boxes</td>
     <td class="td-a">$${grand.toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2})}</td>
-    <td></td><td></td>
+    <td></td>
   </tr>`;
-
-  tbody.innerHTML=html;
   document.getElementById('exportBtn').disabled=false;
-  // Show tap hint on mobile if groups are collapsed
-  const hint = document.getElementById('mobileHint');
-  if(hint) hint.style.display = (window.innerWidth <= 600 ? 'none' : 'block');
 }
-
-function toggleVendorGroup(vid, hdrEl){
-  const body=document.getElementById(vid);
-  if(!body) return;
-  const isNowCollapsed=body.classList.toggle('collapsed');
-  hdrEl.classList.toggle('open', !isNowCollapsed);
-}
-
 
 function doSort(col){
   sortDir=sortCol===col?(sortDir==='asc'?'desc':'asc'):(col==='date'||col==='amount'?'desc':'asc');
@@ -1455,7 +1084,6 @@ function openEdit(id){
   document.getElementById('edit-date').value=inv.date||'';
   document.getElementById('edit-invoice').value=inv.invoice_number||'';
   document.getElementById('edit-boxes').value=inv.boxes!=null?inv.boxes:'';
-  document.getElementById('edit-qty').value=inv.qty_shipped||'';
   document.getElementById('edit-total').value=inv.total||'';
   openM('editMod');
 }
@@ -1466,15 +1094,13 @@ function saveEdit(){
   inv.invoice_number=document.getElementById('edit-invoice').value.trim()||inv.invoice_number;
   const b=document.getElementById('edit-boxes').value.trim();
   inv.boxes=b!==''?b:inv.boxes;
-  const q=document.getElementById('edit-qty').value.trim();
-  inv.qty_shipped=q!==''?q:inv.qty_shipped||'';
   inv.total=document.getElementById('edit-total').value.trim()||inv.total;
   pendingEdit=null;save();renderTbl();updateStats();closeM('editMod');toast('Invoice updated','ok');
 }
 
 // ─── DELETE ───────────────────────────────────────────────────────────────────
 function askDel(id,name){pendingDel=id;document.getElementById('delMsg').textContent=`Remove "${name}" from the tracker?`;openM('delMod');}
-function doDelete(){const _id=pendingDel;invoices=invoices.filter(x=>String(x.id)!==String(_id));pendingDel=null;localStorage.setItem('ck_inv',JSON.stringify(invoices));sbDeleteInvoice(_id);renderTbl();updateStats();closeM('delMod');toast('Invoice removed','wrn');}
+function doDelete(){const _id=pendingDel;invoices=invoices.filter(x=>String(x.id)!==String(_id));pendingDel=null;localStorage.setItem('ck_inv',JSON.stringify(invoices));sbDelete(_id);renderTbl();updateStats();closeM('delMod');toast('Invoice removed','wrn');}
 function doClear(){const n=invoices.length;if(!n){closeM('clearMod');return;}invoices=[];save();renderTbl();updateStats();document.getElementById('exportBtn').disabled=true;closeM('clearMod');toast(`${n} invoice${n!==1?'s':''} cleared`,'wrn');}
 
 // ─── STATS ────────────────────────────────────────────────────────────────────
@@ -1571,18 +1197,15 @@ function renderVendorAcc(vmap,vcnt,data){
       else if(st==='partial') badge='<span class="badge badge-amber">Partial</span>';
       else if(boxes>0)        badge='<span class="badge badge-gray">Pending</span>';
       const remDisplay=rem===null?'—':st==='complete'?'<span class="badge badge-green">✓</span>':st==='overage'?'<span class="badge badge-red">+'+Math.abs(rem)+'</span>':rem;
-      const invLink=x.fileData
-        ?`<span style="color:var(--blue);cursor:pointer;text-decoration:underline;text-underline-offset:2px" onclick="openInvoiceFile('${x.id}')" title="View ${esc(x.filename||'file')}">${esc(x.invoice_number||'—')} 📎</span>`
-        :esc(x.invoice_number||'—');
-      return `<tr class="${st==='complete'?'comp-row':''}" data-vacc-id="${safeId(x.id)}">
+      return `<tr>
         <td class="vd">${esc(x.date||'—')}</td>
-        <td class="vi">${invLink}</td>
-        <td style="text-align:center;font-weight:600">${boxes||'—'}</td>
+        <td class="vi">${esc(x.invoice_number||'—')}</td>
+        <td style="text-align:center">${boxes||'—'}</td>
         <td style="text-align:center">${received||'—'}</td>
         <td style="text-align:center">${remDisplay}</td>
         <td style="text-align:center">${badge}</td>
         <td style="font-size:10px;color:var(--text3)">${x.filename?'📎 '+esc(x.filename.length>22?x.filename.substring(0,20)+'…':x.filename):'—'}</td>
-        <td style="text-align:right;font-family:Fraunces,serif;font-weight:700;color:var(--navy)">${esc(x.total||'—')}</td>
+        <td class="va">$${amt(x.total).toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2})}</td>
       </tr>`;
     }).join('');
     return `<div class="vacc-row">
@@ -1652,7 +1275,7 @@ function renderWeekly(){
       return `<tr class="${wRowCls}">
         <td class="wv">${esc(x.vendor||'—')}</td>
         <td class="wd">${esc(x.date||'—')}</td>
-        <td class="wi">${x.fileData?`<span style="color:var(--blue);cursor:pointer;text-decoration:underline;text-underline-offset:2px" onclick="openInvoiceFile('${x.id}')" title="View ${esc(x.filename||'file')}">${esc(x.invoice_number||'—')}</span>`:esc(x.invoice_number||'—')}</td>
+        <td class="wi">${esc(x.invoice_number||'—')}</td>
         <td style="text-align:center;font-weight:600">${b||'—'}</td>
         <td style="text-align:center">${rcvInp('rcv1')}</td>
         <td style="text-align:center">${rcvInp('rcv2')}</td>
@@ -1660,7 +1283,7 @@ function renderWeekly(){
         <td id="wrem_${safeId(x.id)}" class="wremain ${st==='complete'?'wc':st==='overage'?'wo':st==='partial'?'wp':'wn'}" style="text-align:center">
           ${st==='complete'?'<span class=\"badge badge-green\">✓</span>':st==='overage'?'<span class=\"badge badge-red\">⚠ +'+Math.abs(calcRcvd(x)-parseFloat(x.boxes||0))+'</span>':st==='pending'?(parseFloat(x.boxes)||0):rem!==null?rem:'—'}
         </td>
-        <td id="wst_${safeId(x.id)}" style="text-align:center">${badge}</td>
+        <td style="text-align:center">${badge}</td>
         <td class="wa">${esc(x.total||'—')}</td>
       </tr>`;
     }).join('');
@@ -1668,7 +1291,7 @@ function renderWeekly(){
     const allComplete=wDone===wInvs.length&&wInvs.length>0;
     const hdrStyle=allComplete?'background:linear-gradient(135deg,#15803d,#166534);':'';
     return `<div class="week-sec">
-      <div class="week-hdr" data-wkkey="${key}" style="${hdrStyle}">
+      <div class="week-hdr" style="${hdrStyle}">
         <div class="week-label">${allComplete?'✅':'📅'} ${allComplete?fmtWkLabel(wk.start,wk.end)+' — ALL COMPLETE':fmtWkLabel(wk.start,wk.end)}</div>
         <div class="week-pills">
           <div class="week-pill">${wInvs.length} invoice${wInvs.length!==1?'s':''}</div>
@@ -1831,7 +1454,7 @@ function renderEmpWeekly(){
       return `<tr class="${st==='complete'?'wcomp':st==='overage'?'wover':''}">
         <td class="wv">${esc(x.vendor||'—')}</td>
         <td class="wd">${esc(x.date||'—')}</td>
-        <td class="wi">${x.fileData?`<span style="color:var(--blue);cursor:pointer;text-decoration:underline;text-underline-offset:2px" onclick="openInvoiceFile('${x.id}')" title="View ${esc(x.filename||'file')}">${esc(x.invoice_number||'—')}</span>`:esc(x.invoice_number||'—')}</td>
+        <td class="wi">${esc(x.invoice_number||'—')}</td>
         <td style="text-align:center;font-weight:600">${boxes||'—'}</td>
         <td style="text-align:center">${rcvInp('rcv1')}</td>
         <td style="text-align:center">${rcvInp('rcv2')}</td>
@@ -1845,7 +1468,7 @@ function renderEmpWeekly(){
     const weekIcon=allComplete?'✅':'📅';
     const weekLabel=allComplete?`${fmtWkLabel(wk.start,wk.end)} — ALL COMPLETE`:`${fmtWkLabel(wk.start,wk.end)}`;
     return `<div class="week-sec">
-      <div class="week-hdr" data-wkkey="${key}" style="${hdrStyle}">
+      <div class="week-hdr" style="${hdrStyle}">
         <div class="week-label">${weekIcon} ${weekLabel}</div>
         <div class="week-pills">
           <div class="week-pill">${wInvs.length} invoice${wInvs.length!==1?'s':''}</div>
@@ -1874,209 +1497,53 @@ function renderEmpWeekly(){
   }).join('');
 }
 
-// ─── ARCHIVE ────────────────────────────────────────────────────────────────────
-// Archive storage: array of {weekKey, weekLabel, archivedAt, invoices:[]}
-let archived = JSON.parse(localStorage.getItem('ck_archived') || '[]');
-
-function saveArchive(){ localStorage.setItem('ck_archived', JSON.stringify(archived)); sbSaveArchive(); }
-
-// Called on app load and every Monday check
-function checkAutoArchive(){
-  const now = new Date();
-  // Only run on Monday (day 1) or if it's been triggered manually
-  // But we check ALL complete weeks regardless of day for reliability
-  const wks = {};
-  invoices.forEach(x => {
-    if(!x.date || isNaN(new Date(x.date))) return;
-    const k = getWkKey(x.date);
-    if(!wks[k]) { const {start,end} = getWkRange(x.date); wks[k]={invs:[],start,end,key:k}; }
-    wks[k].invs.push(x);
-  });
-
-  let archiveCount = 0;
-  Object.values(wks).forEach(wk => {
-    // Skip current week — never archive the active week
-    const currentWkKey = getWkKey(now.toISOString().slice(0,10));
-    if(wk.key === currentWkKey) return;
-
-    // Check if entire week is complete
-    const allDone = wk.invs.length > 0 && wk.invs.every(x => getStatus(x) === 'complete');
-    if(!allDone) return;
-
-    // Check not already archived
-    const alreadyArchived = archived.some(a => a.weekKey === wk.key);
-    if(alreadyArchived) return;
-
-    // Check week ended at least 7 days ago (previous week safety buffer)
-    const weekEnd = new Date(wk.end);
-    const daysSinceEnd = Math.floor((now - weekEnd) / 86400000);
-    if(daysSinceEnd < 0) return; // week hasn't ended yet
-
-    // Archive it
-    const label = fmtWkLabel(wk.start, wk.end);
-    archived.push({
-      weekKey: wk.key,
-      weekLabel: label,
-      archivedAt: now.toISOString(),
-      invoices: [...wk.invs]
-    });
-
-    // Remove these invoices from active list
-    const archInvIds = new Set(wk.invs.map(x => String(x.id)));
-    invoices = invoices.filter(x => !archInvIds.has(String(x.id)));
-    archiveCount++;
-  });
-
-  if(archiveCount > 0){
-    save(); saveArchive();
-    renderTbl(); updateStats();
-    renderWeekly();
-    renderEmpAlerts && renderEmpAlerts();
-    toast(`📁 ${archiveCount} week${archiveCount!==1?'s':''} auto-archived`, 'ok');
-  }
-}
-
-function restoreWeek(weekKey){
-  const idx = archived.findIndex(a => a.weekKey === weekKey);
-  if(idx === -1) return;
-  const wk = archived[idx];
-  // Put invoices back into active list
-  invoices.push(...wk.invoices);
-  archived.splice(idx, 1);
-  save(); saveArchive();
-  renderTbl(); updateStats(); renderWeekly(); renderArchive();
-  toast(`↩ Week of ${wk.weekLabel} restored to active`, 'ok');
-}
-
-function renderArchive(){
-  const el = document.getElementById('archContent');
-  if(!el) return;
-
-  if(!archived.length){
-    el.innerHTML = `<div class="arch-empty"><div style="font-size:36px">📭</div><p>No archived weeks yet.</p><p style="margin-top:6px;font-size:11px">Completed weeks from previous weeks are automatically archived here.</p></div>`;
-    return;
-  }
-
-  // Sort newest first
-  const sorted = [...archived].sort((a,b) => new Date(b.weekKey) - new Date(a.weekKey));
-
-  el.innerHTML = sorted.map(wk => {
-    const totalBoxes = wk.invoices.reduce((s,x) => s+toNum(x.boxes), 0);
-    const totalAmt   = wk.invoices.reduce((s,x) => s+toNum(String(x.total||'').replace(/[^0-9.]/g,'')), 0);
-    const archivedDate = new Date(wk.archivedAt).toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'});
-    const wkId = 'arch_'+wk.weekKey.replace(/-/g,'_');
-
-    const rows = wk.invoices
-      .sort((a,b) => ms(b.date)-ms(a.date))
-      .map(x => `<tr>
-        <td style="font-weight:500;color:var(--navy)">${esc(x.vendor||'—')}</td>
-        <td style="color:var(--text2);font-size:11px">${esc(x.date||'—')}</td>
-        <td style="color:var(--blue);font-size:11px">${esc(x.invoice_number||'—')}</td>
-        <td style="text-align:center">${toNum(x.boxes)||'—'}</td>
-        <td style="text-align:center">${calcRcvd(x)||'—'}</td>
-        <td style="text-align:center"><span class="badge badge-green">✓ Done</span></td>
-        <td style="font-family:Fraunces,serif;font-weight:700;text-align:right;color:var(--navy)">${esc(x.total||'—')}</td>
-      </tr>`).join('');
-
-    return `<div class="arch-week">
-      <div class="arch-hdr" onclick="toggleArchWeek('${wkId}')">
-        <div class="arch-label">✅ ${esc(wk.weekLabel)}</div>
-        <div class="arch-meta">
-          <span>${wk.invoices.length} invoice${wk.invoices.length!==1?'s':''}</span>
-          <span>📦 <strong>${totalBoxes}</strong> boxes</span>
-          <span>💰 <strong>$${totalAmt.toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2})}</strong></span>
-          <span style="color:var(--text3)">Archived ${archivedDate}</span>
-          <button class="arch-restore-btn" onclick="event.stopPropagation();restoreWeek('${wk.weekKey}')">↩ Restore</button>
-        </div>
-      </div>
-      <div class="arch-body" id="${wkId}">
-        <table class="arch-tbl">
-          <thead><tr>
-            <th>Vendor</th><th>Date</th><th>Invoice #</th>
-            <th style="text-align:center">Boxes</th>
-            <th style="text-align:center">Received</th>
-            <th style="text-align:center">Status</th>
-            <th style="text-align:right">Amount</th>
-          </tr></thead>
-          <tbody>${rows}</tbody>
-        </table>
-      </div>
-    </div>`;
-  }).join('');
-
-  document.getElementById('archExportBtn').disabled = !archived.length;
-}
-
-function toggleArchWeek(id){
-  const body = document.getElementById(id);
-  if(body) body.classList.toggle('open');
-}
-
-function exportArchiveXL(){
-  if(!archived.length) return;
-  const rows = [['Week','Vendor','Invoice Date','Invoice #','Boxes','Received','Total Amount','Archived On']];
-  [...archived].sort((a,b)=>new Date(b.weekKey)-new Date(a.weekKey)).forEach(wk=>{
-    wk.invoices.sort((a,b)=>ms(b.date)-ms(a.date)).forEach(x=>{
-      rows.push([wk.weekLabel, x.vendor||'', x.date||'', x.invoice_number||'',
-        toNum(x.boxes)||'', calcRcvd(x)||'', x.total||'',
-        new Date(wk.archivedAt).toLocaleDateString('en-US')]);
-    });
-  });
-  const ws = XLSX.utils.aoa_to_sheet(rows);
-  ws['!cols']=[{wch:22},{wch:28},{wch:13},{wch:18},{wch:8},{wch:10},{wch:14},{wch:14}];
-  const wb = XLSX.utils.book_new();
-  XLSX.utils.book_append_sheet(wb, ws, 'Archived Invoices');
-  XLSX.writeFile(wb, `CeeKay_Archive_${new Date().toISOString().slice(0,10)}.xlsx`);
-  toast('📥 Archive exported!', 'ok');
-}
-
 // ─── UTILS ────────────────────────────────────────────────────────────────────
 function ms(s){if(!s)return 0;const d=new Date(s);return isNaN(d)?0:d.getTime();}
 function safeId(id){return String(id).replace(/[^a-zA-Z0-9_-]/g,'_');}
 function amt(s){if(!s)return 0;return parseFloat(String(s).replace(/[^0-9.]/g,''))||0;}
 function esc(s){return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');}
-function save(){
-  localStorage.setItem('ck_inv',JSON.stringify(invoices));
-  sbSaveInvoices().then(()=>{
-    const dot = document.getElementById('syncDot');
-    if(dot){ dot.style.background='#10b981'; dot.title='Synced'; }
-  }).catch(()=>{
-    const dot = document.getElementById('syncDot');
-    if(dot){ dot.style.background='#ef4444'; dot.title='Sync failed'; }
+function save(){localStorage.setItem('ck_inv',JSON.stringify(invoices));sbSave();}
+function toast(msg,type='ok'){const t=document.createElement('div');t.className=`toast ${type}`;t.textContent=msg;document.getElementById('toasts').appendChild(t);setTimeout(()=>t.remove(),4000);}
+
+function manualSync(){
+  const btn=document.querySelector('[onclick="manualSync()"]');
+  if(btn){btn.textContent='↻...';btn.disabled=true;}
+  sbLoad().then(()=>{
+    renderTbl();updateStats();
+    if(btn){btn.textContent='↻ Sync';btn.disabled=false;}
+    toast('✓ Synced with team database','ok');
   });
 }
-function toast(msg,type='ok'){const t=document.createElement('div');t.className=`toast ${type}`;t.textContent=msg;document.getElementById('toasts').appendChild(t);setTimeout(()=>t.remove(),4000);}
 
 // ─── INIT ─────────────────────────────────────────────────────────────────────
 updateKeyUI();
 (async()=>{
-  // Load shared API key first so all devices share one key
-  const sharedKey = await sbLoadApiKey();
+  // Load shared API key — enter once, works on all devices
+  const sharedKey = await sbLoadKey();
   if(sharedKey){ localStorage.setItem('ck_key', sharedKey); updateKeyUI(); }
-  const ok = await sbLoadAll();
+
+  // Load invoices from Supabase
+  const ok = await sbLoad();
   if(!ok){
-    // Only use localStorage if Supabase failed completely (network error)
+    // Network error — fall back to local
     invoices = JSON.parse(localStorage.getItem('ck_inv')||'[]');
-    archived = JSON.parse(localStorage.getItem('ck_archived')||'[]');
-    toast('⚠️ Offline — check your connection','wrn');
+    toast('⚠️ Offline — showing local data','wrn');
   } else {
     toast('✓ Connected — '+invoices.length+' invoices loaded','ok');
   }
   renderTbl(); updateStats();
   checkAutoArchive(); setInterval(checkAutoArchive,3600000);
 
-  // Auto-refresh every 30s to pick up changes from other devices
+  // Auto-refresh every 30s — picks up uploads from other devices
   setInterval(async()=>{
-    const prevCount = invoices.length;
-    await sbLoadAll();
+    const prev=invoices.length;
+    await sbLoad();
     renderTbl(); updateStats();
-    // Only notify if new invoices appeared from another device
-    if(invoices.length > prevCount){
-      toast(`📥 ${invoices.length - prevCount} new invoice${invoices.length-prevCount!==1?'s':''} synced from team`,'ok');
-    }
-  }, 30000);
+    if(invoices.length>prev) toast('📥 '+( invoices.length-prev)+' new invoices synced','ok');
+  },30000);
 })();
-if(!getKey()) setTimeout(()=>openM('apiMod'),500);
+if(!getKey()) setTimeout(()=>openM('apiMod'),800);
+
 </script>
 </body>
 </html>
