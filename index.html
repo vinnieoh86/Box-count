@@ -1355,6 +1355,7 @@ function renderTbl(){
   const totalQty=data.reduce((s,x)=>s+toNum(x.qty_shipped),0);
 
   let html='';
+  const isMobile = window.innerWidth <= 600;
   vendors.forEach(vendor=>{
     const vinvs=vendorMap[vendor];
     const vid='vg_'+safeId(vendor);
