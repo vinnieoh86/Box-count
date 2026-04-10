@@ -538,15 +538,21 @@ const supa = supabase.createClient(SUPA_URL, SUPA_KEY);
 async function sbSave(){
   if(!invoices.length) return;
   const rows = invoices.map(x=>({
-    id: String(x.id).replace('.','_'),
-    vendor: x.vendor||'', date: x.date||'',
-    invoice_number: x.invoice_number||'', filename: x.filename||'',
-    boxes: String(x.boxes||''), total: x.total||'',
-    qty_shipped: String(x.qty_shipped||''),
+    id: String(x.id).replace(/\./g,'_'),
+    vendor: x.vendor||'',
+    date: x.date||'',
+    invoice_number: x.invoice_number||'',
+    filename: x.filename||'',
+    boxes: x.boxes!=null && x.boxes!=='' ? parseInt(x.boxes,10)||0 : 0,
+    total: x.total!=null && x.total!=='' ? parseFloat(String(x.total).replace(/[^0-9.]/g,''))||0 : 0,
+    qty_shipped: x.qty_shipped!=null && x.qty_shipped!=='' ? parseInt(x.qty_shipped,10)||0 : 0,
     added_at: x.addedAt||new Date().toISOString(),
-    rcv1:String(x.rcv1||''),rcv1ts:x.rcv1ts||'',
-    rcv2:String(x.rcv2||''),rcv2ts:x.rcv2ts||'',
-    rcv3:String(x.rcv3||''),rcv3ts:x.rcv3ts||'',
+    rcv1: x.rcv1!=null && x.rcv1!=='' ? parseInt(x.rcv1,10)||0 : 0,
+    rcv1ts: x.rcv1ts||'',
+    rcv2: x.rcv2!=null && x.rcv2!=='' ? parseInt(x.rcv2,10)||0 : 0,
+    rcv2ts: x.rcv2ts||'',
+    rcv3: x.rcv3!=null && x.rcv3!=='' ? parseInt(x.rcv3,10)||0 : 0,
+    rcv3ts: x.rcv3ts||'',
   }));
   const {error} = await supa.from('invoices').upsert(rows,{onConflict:'id'});
   if(error) console.error('sbSave error:',error.message);
@@ -1513,6 +1519,30 @@ function manualSync(){
     if(btn){btn.textContent='↻ Sync';btn.disabled=false;}
     toast('✓ Synced with team database','ok');
   });
+}
+
+// ─── AUTO ARCHIVE ─────────────────────────────────────────────────────────────
+function checkAutoArchive(){
+  try{
+    const now = new Date();
+    if(now.getDay()!==1) return; // Only Mondays
+    const key = 'ck_last_archive';
+    const last = localStorage.getItem(key);
+    const today = now.toDateString();
+    if(last===today) return; // Already ran today
+    localStorage.setItem(key, today);
+    const weekStart = new Date(now);
+    weekStart.setDate(now.getDate() - now.getDay() + 1);
+    weekStart.setHours(0,0,0,0);
+    const toArchive = invoices.filter(x=>{ const d=new Date(x.date); return !isNaN(d)&&d<weekStart; });
+    if(!toArchive.length) return;
+    const archived = JSON.parse(localStorage.getItem('ck_archived')||'[]');
+    archived.push(...toArchive);
+    localStorage.setItem('ck_archived', JSON.stringify(archived));
+    invoices = invoices.filter(x=>{ const d=new Date(x.date); return isNaN(d)||d>=weekStart; });
+    save();
+    toast('📦 Auto-archived '+toArchive.length+' old invoices','ok');
+  }catch(e){ console.warn('checkAutoArchive:',e.message); }
 }
 
 // ─── INIT ─────────────────────────────────────────────────────────────────────
