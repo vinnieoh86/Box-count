@@ -74,6 +74,42 @@ header{background:var(--navy);padding:0 32px;display:flex;align-items:stretch;ju
 .modal{background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:32px;width:480px;max-width:93vw;transform:translateY(12px);transition:transform .2s;box-shadow:var(--shadow-md);}
 .ov.show .modal{transform:translateY(0);}
 .modal h2{font-family:'Fraunces',serif;font-size:20px;color:var(--navy);margin-bottom:8px;}
+
+/* ─── STATUS FILTERS ─────────────────────────── */
+.filter-bar{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:14px;align-items:center;}
+.fpill{background:var(--surface2);border:1px solid var(--border2);color:var(--text2);font-size:11px;font-weight:600;padding:4px 12px;border-radius:20px;cursor:pointer;transition:all .15s;white-space:nowrap;}
+.fpill:hover{border-color:var(--blue);color:var(--navy);}
+.fpill.active{background:var(--blue);border-color:var(--blue);color:#fff;}
+.fpill.f-complete{}.fpill.f-complete.active{background:#16a34a;border-color:#16a34a;}
+.fpill.f-partial.active{background:#d97706;border-color:#d97706;}
+.fpill.f-pending.active{background:#6b7280;border-color:#6b7280;}
+.fpill.f-overage.active{background:#dc2626;border-color:#dc2626;}
+
+/* ─── PIN LOGIN ─────────────────────────────── */
+#pinOverlay{position:fixed;inset:0;background:#1e3a5f;z-index:9999;display:flex;align-items:center;justify-content:center;flex-direction:column;}
+#pinOverlay.hidden{display:none;}
+.pin-box{background:#fff;border-radius:16px;padding:36px 40px;width:min(92vw,380px);text-align:center;box-shadow:0 20px 60px rgba(0,0,0,.4);}
+.pin-logo{font-family:'Fraunces',serif;font-size:26px;color:#1e3a5f;font-weight:700;margin-bottom:4px;}
+.pin-sub{font-size:13px;color:#6b7280;margin-bottom:24px;}
+.pin-dots{display:flex;gap:12px;justify-content:center;margin-bottom:24px;}
+.pin-dot{width:18px;height:18px;border-radius:50%;border:2px solid #d1d5db;background:transparent;transition:all .15s;}
+.pin-dot.filled{background:#1e3a5f;border-color:#1e3a5f;}
+.pin-pad{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:16px;}
+.pin-key{background:#f3f4f6;border:none;border-radius:10px;padding:16px;font-size:20px;font-weight:600;cursor:pointer;color:#1e3a5f;transition:background .1s;}
+.pin-key:hover{background:#e5e7eb;}
+.pin-key:active{background:#dbeafe;}
+.pin-clear{background:#fee2e2;color:#dc2626;}
+.pin-clear:hover{background:#fecaca;}
+.pin-error{color:#dc2626;font-size:13px;margin-top:8px;min-height:20px;}
+
+/* Admin settings modal */
+.admin-user-row{display:flex;gap:8px;align-items:center;padding:10px 0;border-bottom:1px solid var(--border);}
+.admin-user-row:last-child{border-bottom:none;}
+.admin-badge{font-size:10px;font-weight:600;padding:2px 8px;border-radius:4px;}
+.badge-admin{background:#dbeafe;color:#1e40af;}
+.badge-secondary{background:#ede9fe;color:#6d28d9;}
+.badge-stock{background:#dcfce7;color:#166534;}
+
 .modal p{font-size:13px;color:var(--text2);line-height:1.6;margin-bottom:18px;}
 .modal input,.modal select{width:100%;background:var(--surface2);border:1px solid var(--border2);border-radius:6px;padding:10px 13px;font-family:'Inter',sans-serif;font-size:13px;color:var(--text);outline:none;margin-bottom:12px;transition:border-color .2s;}
 .modal input:focus,.modal select:focus{border-color:var(--blue);box-shadow:0 0 0 3px var(--blue-dim);}
@@ -415,6 +451,7 @@ tbody tr:hover .delbtn,tbody tr:hover .editbtn{opacity:1;}
   </div>
   <div class="hdr-right">
     <div class="api-pill" onclick="openM('aliasModal')" title="Manage vendor aliases">⚙ Aliases</div>
+    <div class="api-pill" id="adminBtn" onclick="openAdminIfAllowed()" title="Admin settings" style="display:none">👤 <span id="adminBtnLabel">Admin</span></div>
     <div class="api-pill" onclick="openM('apiMod')">
       <div class="dot" id="apiDot"></div><span id="apiTxt">No API Key</span>
     </div>
@@ -471,6 +508,14 @@ tbody tr:hover .delbtn,tbody tr:hover .editbtn{opacity:1;}
     <div class="pl" id="pl"></div>
   </div>
 
+  <div class="filter-bar" id="invFilterBar">
+    <span style="font-size:11px;color:var(--text3);font-weight:600;margin-right:2px">FILTER:</span>
+    <button class="fpill active" onclick="setInvFilter('all',this)">All</button>
+    <button class="fpill f-pending" onclick="setInvFilter('pending',this)">Pending</button>
+    <button class="fpill f-partial" onclick="setInvFilter('partial',this)">Partial</button>
+    <button class="fpill f-complete" onclick="setInvFilter('complete',this)">Complete</button>
+    <button class="fpill f-overage" onclick="setInvFilter('overage',this)">Overage</button>
+  </div>
   <div class="card">
     <div class="card-header">
       <div class="card-title">Invoice Log</div>
@@ -549,8 +594,24 @@ tbody tr:hover .delbtn,tbody tr:hover .editbtn{opacity:1;}
 <!-- ═══ EMPLOYEE RECEIVING PAGE ═══ -->
 <div class="page" id="page-employee">
 
-  <!-- Alert Banner (populated by JS) -->
-  <div id="empAlertWrap"></div>
+  <!-- Upload + Alert top row -->
+  <div style="display:flex;gap:16px;margin-bottom:16px;flex-wrap:wrap;align-items:stretch">
+    <!-- Drop zone left -->
+    <div style="flex:1;min-width:260px">
+      <div class="dz" id="dz-emp" onclick="document.getElementById('fi-emp').click()" style="padding:18px;min-height:100px">
+        <span class="dz-icon" style="font-size:24px">📂</span>
+        <div class="dz-title" style="font-size:14px">Drop invoices here</div>
+        <div class="dz-sub" style="font-size:11px">PDF or photo</div>
+        <div style="display:flex;gap:8px;justify-content:center;margin-top:10px">
+          <button onclick="event.stopPropagation();document.getElementById('fi-emp').click()" style="background:var(--blue);color:#fff;border:none;padding:7px 16px;border-radius:7px;font-size:12px;font-weight:600;cursor:pointer">📁 Files</button>
+          <button onclick="event.stopPropagation();openCameraMode()" style="background:var(--surface2);color:var(--text);border:1px solid var(--border2);padding:7px 16px;border-radius:7px;font-size:12px;font-weight:600;cursor:pointer">📷 Camera</button>
+        </div>
+        <input type="file" id="fi-emp" multiple accept=".pdf,image/*" style="display:none"/>
+      </div>
+    </div>
+    <!-- Alert right -->
+    <div style="flex:1;min-width:260px" id="empAlertWrap"></div>
+  </div>
 
   <!-- KPI row — no dollar amounts -->
   <div class="emp-kpi">
@@ -560,6 +621,14 @@ tbody tr:hover .delbtn,tbody tr:hover .editbtn{opacity:1;}
   </div>
 
   <!-- Weekly delivery tracker — same as dashboard but employee-focused -->
+  <div class="filter-bar" id="empFilterBar">
+    <span style="font-size:11px;color:var(--text3);font-weight:600;margin-right:2px">FILTER:</span>
+    <button class="fpill active" onclick="setEmpFilter('all',this)">All</button>
+    <button class="fpill f-pending" onclick="setEmpFilter('pending',this)">Pending</button>
+    <button class="fpill f-partial" onclick="setEmpFilter('partial',this)">Partial</button>
+    <button class="fpill f-complete" onclick="setEmpFilter('complete',this)">Complete</button>
+    <button class="fpill f-overage" onclick="setEmpFilter('overage',this)">Overage</button>
+  </div>
   <div class="emp-section-title">📦 Weekly Delivery Tracker <span>Enter received boxes below — updates save automatically</span></div>
   <div class="week-wrap" id="empWeekWrap"></div>
 
@@ -829,19 +898,10 @@ function applyAliasesToAll(){
       changed++;
     }
   });
-  // Save all to Supabase after batch upload completes
-localStorage.setItem('ck_inv',JSON.stringify(invoices));
-renderTbl();updateStats();renderEmployee();setTimeout(checkAutoArchive,500);
-// Explicitly await Supabase save and confirm
-(async()=>{
-  try {
-    await sbSaveInvoices();
-    toast('✓ Saved & synced to team database','ok');
-  } catch(e) {
-    toast('⚠️ Saved locally — sync to team failed: '+e.message,'wrn');
-  }
-})();
-
+  // Save after applying aliases
+  localStorage.setItem('ck_inv',JSON.stringify(invoices));
+  renderTbl();updateStats();renderEmployee();
+  (async()=>{ try{ await sbSaveInvoices(); }catch(e){} })();
   if(changed){
     // Show what changed
     const unique=[...new Map(changes.map(x=>[x.from+'->'+x.to,x])).values()];
@@ -986,6 +1046,11 @@ dzEl.addEventListener('drop', e=>{
 });
 document.getElementById('fi').addEventListener('change',e=>{
   const f=Array.from(e.target.files);if(f.length) processFiles(f);e.target.value='';});
+document.getElementById('fi-emp').addEventListener('change',e=>{
+  const f=Array.from(e.target.files);
+  if(f.length) processFiles(f.map(renameWithTimestamp));
+  e.target.value='';
+});
 document.getElementById('fi-camera').addEventListener('change',e=>{
   const f=Array.from(e.target.files);
   if(f.length) processFiles(f.map(renameWithTimestamp));
@@ -1078,8 +1143,10 @@ async function processMultiPageCamera(pages, ts){
       const fileUrl = await uploadToStorage(pages[0], String(id).replace(/\./g,'_'));
       invoices.push({...res, id, addedAt:new Date().toISOString(), filename,
         fileUrl: fileUrl||'',
+        uploadedBy: currentUser?.name||'Unknown',
         qty_shipped:res.qty_shipped||'',
-        rcv1:'',rcv1ts:'',rcv2:'',rcv2ts:'',rcv3:'',rcv3ts:''});
+        rcv1:'',rcv1ts:'',rcv2:'',rcv2ts:'',rcv3:'',rcv3ts:'',
+        rcv1by:'',rcv2by:'',rcv3by:''});
       newIds.add(id);
       item.className='pi done';
       item.innerHTML=`<span>✓</span><span>${filename} — <strong>${res.vendor}</strong> · ${res.total}</span>`;
@@ -1119,87 +1186,37 @@ async function callClaudeMultiImage(pages){
   return JSON.parse(match[0]);
 }
 
-// ─── LOCAL FILE STORAGE (IndexedDB) ──────────────────────────────────────────
-// Files are stored locally on each device — no cloud upload needed
-const DB_NAME = 'ceekay_files';
-const DB_STORE = 'pdfs';
-let _db = null;
-
-function openDB(){
-  if(_db) return Promise.resolve(_db);
-  return new Promise((res,rej)=>{
-    const req = indexedDB.open(DB_NAME, 1);
-    req.onupgradeneeded = e => e.target.result.createObjectStore(DB_STORE);
-    req.onsuccess = e => { _db = e.target.result; res(_db); };
-    req.onerror = () => rej(req.error);
-  });
-}
-
-async function saveFileLocal(id, file){
+// ─── SUPABASE STORAGE (cloud — works on all devices) ─────────────────────────
+async function uploadToStorage(file, invoiceId){
   try{
-    const db = await openDB();
-    const b64 = await toB64(file);
-    const record = { b64, type: file.type, name: file.name };
-    return new Promise((res,rej)=>{
-      const tx = db.transaction(DB_STORE,'readwrite');
-      tx.objectStore(DB_STORE).put(record, id);
-      tx.oncomplete = () => res('local:'+id);
-      tx.onerror = () => rej(tx.error);
+    const ext = file.name.split('.').pop() || 'pdf';
+    const path = invoiceId + '.' + ext;
+    const {error} = await supa.storage.from('invoices').upload(path, file, {
+      upsert: true, contentType: file.type || 'application/octet-stream'
     });
-  } catch(e){ console.warn('IndexedDB save error:', e.message); return ''; }
+    if(error){ console.warn('Storage upload error:', error.message); return ''; }
+    const {data} = supa.storage.from('invoices').getPublicUrl(path);
+    return data.publicUrl || '';
+  } catch(e){ console.warn('Storage error:', e.message); return ''; }
 }
 
-async function getFileLocal(id){
-  try{
-    const db = await openDB();
-    return new Promise((res)=>{
-      const req = db.transaction(DB_STORE,'readonly').objectStore(DB_STORE).get(id);
-      req.onsuccess = () => res(req.result||null);
-      req.onerror = () => res(null);
-    });
-  } catch(e){ return null; }
+// OPEN in new tab — clicking invoice # link
+async function openLocalFile(fileUrl, filename){
+  if(!fileUrl){ toast('No PDF stored for this invoice','wrn'); return; }
+  window.open(fileUrl, '_blank');
 }
 
-// OPEN in new tab — for clicking invoice # link
-async function openLocalFile(idOrUrl, filename){
-  const key = String(idOrUrl).replace('local:','').replace(/\./g,'_');
-  const record = await getFileLocal(key);
-  if(!record){ toast('⚠️ PDF not on this device — open on the laptop that uploaded it','wrn'); return; }
-  const mime = record.type || (record.name&&record.name.endsWith('.pdf') ? 'application/pdf' : 'image/jpeg');
-  const blob = b64ToBlob(record.b64, mime);
-  const url = URL.createObjectURL(blob);
-  window.open(url, '_blank');
-  setTimeout(()=>URL.revokeObjectURL(url), 30000);
-}
-
-// DOWNLOAD to disk — for receiving/dashboard download buttons
-async function downloadLocalFile(idOrUrl, filename){
-  const key = String(idOrUrl).replace('local:','').replace(/\./g,'_');
-  const record = await getFileLocal(key);
-  if(!record){ toast('⚠️ PDF not on this device — open on the laptop that uploaded it','wrn'); return false; }
-  const mime = record.type || 'application/pdf';
-  const blob = b64ToBlob(record.b64, mime);
-  const url = URL.createObjectURL(blob);
+// DOWNLOAD — for DL buttons in receiving/dashboard
+async function downloadLocalFile(fileUrl, filename){
+  if(!fileUrl){ toast('No PDF stored for this invoice','wrn'); return false; }
   const a = document.createElement('a');
-  a.href = url;
-  a.download = filename || record.name || 'invoice.pdf';
+  a.href = fileUrl;
+  a.download = filename || 'invoice.pdf';
+  a.target = '_blank';
   document.body.appendChild(a);
   a.click();
   document.body.removeChild(a);
-  setTimeout(()=>URL.revokeObjectURL(url), 5000);
   return true;
-}
-
-function b64ToBlob(b64, type){
-  const binary = atob(b64);
-  const bytes = new Uint8Array(binary.length);
-  for(let i=0;i<binary.length;i++) bytes[i]=binary.charCodeAt(i);
-  return new Blob([bytes],{type});
-}
-
-// uploadToStorage now saves locally instead of Supabase
-async function uploadToStorage(file, invoiceId){
-  return await saveFileLocal(invoiceId, file);
 }
 
 // ─── FILENAME HELPERS ─────────────────────────────────────────────────────────
@@ -1244,12 +1261,14 @@ async function processFiles(files, overrideDelay=null){
         // Generate guaranteed unique ID using index + timestamp + random
         const id = Date.now() + (i * 1000) + Math.floor(Math.random()*999);
         const safeId = 'inv_' + id;
-        // Save file to IndexedDB FIRST before anything else
+        // Save file to Supabase Storage
         const fileUrl = await uploadToStorage(files[i], safeId);
         invoices.push({...res,id,addedAt:new Date().toISOString(),filename:files[i].name,
           fileUrl: fileUrl||'',
+          uploadedBy: currentUser?.name||'Unknown',
           qty_shipped: res.qty_shipped||'',
-          rcv1:'',rcv1ts:'',rcv2:'',rcv2ts:'',rcv3:'',rcv3ts:''});
+          rcv1:'',rcv1ts:'',rcv2:'',rcv2ts:'',rcv3:'',rcv3ts:'',
+          rcv1by:'',rcv2by:'',rcv3by:''});
         newIds.add(id);
         items[i].className='pi done';
         items[i].innerHTML=`<span>✓</span><span>${files[i].name} — <strong>${res.vendor}</strong> · ${res.total}</span>`;
@@ -1385,7 +1404,9 @@ function sleep(ms){return new Promise(r=>setTimeout(r,ms));}
 function handleRcv(id,field,val){
   const inv=invoices.find(x=>String(x.id)===String(id));
   if(!inv) return;
-  inv[field]=val===''?'':toNum(val);inv[field+'ts']=val&&val!==''?fmtTs(new Date()):'';
+  inv[field]=val===''?'':toNum(val);
+  inv[field+'ts']=val&&val!==''?fmtTs(new Date()):'';
+  inv[field+'by']=val&&val!==''?(currentUser?.name||''):'';
   save();
   const row=document.querySelector(`tr[data-id="${safeId(id)}"]`);
   if(row){
@@ -1400,6 +1421,7 @@ function handleRcvDash(id,field,val){
   if(!inv) return;
   inv[field]=val===''?'':toNum(val);
   inv[field+'ts']=val&&val!==''?fmtTs(new Date()):'';
+  inv[field+'by']=val&&val!==''?(currentUser?.name||''):'';
   save(); // saves locally + queues Supabase sync
 
   // Fast targeted DOM update — no full re-render, no scroll jump
@@ -1588,6 +1610,9 @@ function renderTbl(){
     const q=searchQ.toLowerCase();
     data=data.filter(x=>(x.vendor||'').toLowerCase().includes(q)||(x.invoice_number||'').toLowerCase().includes(q)||(x.date||'').toLowerCase().includes(q)||(x.total||'').toLowerCase().includes(q));
   }
+  if(invStatusFilter !== 'all'){
+    data = data.filter(x => getStatus(x) === invStatusFilter);
+  }
   if(!data.length){
     tbody.innerHTML=`<tr><td colspan="9"><div class="empty-st"><div style="font-size:28px">📋</div><p>${invoices.length?'No results match your search':'No invoices yet — drop PDFs above to get started'}</p></div></td></tr>`;
     return;
@@ -1608,11 +1633,17 @@ function renderTbl(){
       ? `<span style="color:var(--blue);font-weight:500;text-decoration:underline;cursor:pointer" onclick="openLocalFile('${x.fileUrl}','${esc((x.filename||x.invoice_number||'invoice').replace(/'/g,''))}')" title="Click to download PDF">${esc(x.invoice_number||'—')} 📎</span>`
       : `<span style="color:var(--blue);font-weight:500">${esc(x.invoice_number||'—')}</span>`;
     html+=`<tr data-id="${x.id}" class="${isComp?'comp-row':''}">
-      <td style="font-weight:600;color:var(--navy)">${esc(x.vendor||'—')}${newIds.has(x.id)?'<span class="new-tag">new</span>':''}</td>
+      <td style="font-weight:600;color:var(--navy)">${vcaps(x.vendor||'—')}${newIds.has(x.id)?'<span class="new-tag">new</span>':''}<br>${x.uploadedBy?`<span style="font-size:9px;font-weight:400;color:var(--text3)">↑ ${esc(x.uploadedBy)}</span>`:''}</td>
       <td style="color:var(--text2);font-size:12px">${esc(x.date||'—')}</td>
       <td>${invLink}</td>
       <td><div class="fname" title="${esc(x.filename||'')}">${x.filename?'📎 '+esc(x.filename.length>20?x.filename.substring(0,18)+'…':x.filename):'—'}</div></td>
-      <td style="text-align:center">${boxes||'—'}</td>
+      <td style="text-align:center">${boxes
+        ? boxes
+        : `<input type="number" min="0" placeholder="?" title="Enter box count"
+            style="width:46px;text-align:center;border:1px solid var(--blue);border-radius:4px;padding:2px 4px;font-size:12px;background:var(--surface2);color:var(--text)"
+            onchange="quickSetBoxes('${x.id}',this.value)"
+            onclick="event.stopPropagation()" />`
+      }</td>
       <td style="text-align:right;font-family:'Fraunces',serif;font-weight:700">${esc(x.total||'—')}</td>
       <td style="text-align:center">${badge}</td>
       <td style="text-align:center;white-space:nowrap">
@@ -1648,6 +1679,17 @@ function doSort(col){
   renderTbl();
 }
 function filterTbl(){searchQ=document.getElementById('si').value;renderTbl();}
+
+// ─── QUICK BOX SET ───────────────────────────────────────────────────────────
+function quickSetBoxes(id, val){
+  const inv = invoices.find(x=>String(x.id)===String(id));
+  if(!inv) return;
+  const n = parseInt(val,10);
+  if(isNaN(n)||n<0) return;
+  inv.boxes = n;
+  save(); renderTbl(); updateStats();
+  toast(`Box count set to ${n}`,'ok');
+}
 
 // ─── EDIT ─────────────────────────────────────────────────────────────────────
 function openEdit(id){
@@ -1756,7 +1798,7 @@ function renderDash(){
 // ─── VENDOR ACCORDION ─────────────────────────────────────────────────────────
 function renderVendorAcc(vmap,vcnt,data){
   const wrap=document.getElementById('vaccWrap');
-  const vendors=Object.entries(vmap).sort((a,b)=>b[1]-a[1]);
+  const vendors=Object.entries(vmap).sort((a,b)=>a[0].localeCompare(b[0]));
   if(!vendors.length){wrap.innerHTML='<div style="padding:20px;text-align:center;color:var(--text3);font-size:13px">No vendor data yet</div>';return;}
   wrap.innerHTML=`<div class="vacc-wrap">`+vendors.map(([v,tot])=>{
     const invs=data.filter(x=>x.vendor===v).sort((a,b)=>ms(b.date)-ms(a.date));
@@ -1789,7 +1831,7 @@ function renderVendorAcc(vmap,vcnt,data){
     }).join('');
     return `<div class="vacc-row">
       <button class="vacc-hdr" onclick="toggleAcc('${vid}')">
-        <span class="vacc-name">${esc(v)}</span>
+        <span class="vacc-name">${vcaps(v)}</span>
         <div class="vacc-meta">
           <span class="vacc-cnt">${cnt} invoice${cnt!==1?'s':''}</span>
           <span class="vacc-amt">$${tot.toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2})}</span>
@@ -1842,7 +1884,7 @@ function renderWeekly(){
           onchange="handleRcvDash('${x.id}','${f}',this.value)"
           onfocus="this.select()"
           ${!b?'disabled placeholder="—"':'placeholder="0"'} />
-        <div class="wrec-ts" id="wts_${safeId(x.id)}_${f}">${esc(x[f+'ts']||'')}</div>
+        <div class="wrec-ts" id="wts_${safeId(x.id)}_${f}">${esc(x[f+'ts']||'')}${x[f+'by']?` <span style="color:#60a5fa;font-size:9px">${esc(x[f+'by'])}</span>`:''}</div>
       </div>`;
       const st=getStatus(x);
       let badge='';
@@ -1854,7 +1896,7 @@ function renderWeekly(){
       const wkKey2 = key.replace(/[^a-zA-Z0-9]/g,'_');
       return `<tr class="${wRowCls}">
         <td style="width:28px;text-align:center;padding:4px"><input type="checkbox" class="wpdf-chk" data-wk="${wkKey2}" data-url="${x.fileUrl||''}" data-id="${String(x.id).replace(/\./g,'_')}" data-name="${(x.filename||x.invoice_number||String(x.id)).replace(/"/g,'')}" style="width:15px;height:15px;cursor:pointer" ${!x.fileUrl?'title="No PDF on this device"':''}></td>
-        <td class="wv">${esc(x.vendor||'—')}</td>
+        <td class="wv">${vcaps(x.vendor||'—')}</td>
         <td class="wd">${esc(x.date||'—')}</td>
         <td class="wi">${x.fileUrl?`<span style="color:var(--blue);font-weight:500;text-decoration:underline;cursor:pointer" onclick="openLocalFile('${x.fileUrl}','${(x.filename||x.invoice_number||'invoice').replace(/'/g,'')}')" title="Click to download PDF">${esc(x.invoice_number||'—')} 📎</span>`:esc(x.invoice_number||'—')}</td>
         <td style="text-align:center;font-weight:600">${b||'—'}</td>
@@ -1994,7 +2036,7 @@ function renderEmpAlerts(){
     const vendorKey=encodeURIComponent(inv.vendor||'');
     return `<div class="alert-item" style="cursor:pointer" onclick="goToVendor('${vendorKey}')" title="Click to view in Dashboard">
       <div class="alert-item-left">
-        <div class="alert-vendor" style="color:var(--blue);text-decoration:underline;text-underline-offset:2px">${esc(inv.vendor||'—')} ↗</div>
+        <div class="alert-vendor" style="color:var(--blue);text-decoration:underline;text-underline-offset:2px">${vcaps(inv.vendor||'—')} ↗</div>
         <div class="alert-inv">Invoice #${esc(inv.invoice_number||'—')} &nbsp;·&nbsp; ${esc(inv.date||'—')} &nbsp;·&nbsp; ${toNum(inv.boxes)||'?'} boxes</div>
       </div>
       <div style="display:flex;align-items:center;gap:8px">
@@ -2042,7 +2084,9 @@ function renderEmpWeekly(){
     const wDone=wInvs.filter(x=>getStatus(x)==='complete').length;
     const wPending=wInvs.filter(x=>getStatus(x)==='pending').length;
     const wPartial=wInvs.filter(x=>getStatus(x)==='partial').length;
-    const rows=wInvs.map(x=>{
+    const filteredWInvs = empStatusFilter==='all' ? wInvs : wInvs.filter(x=>getStatus(x)===empStatusFilter);
+    if(!filteredWInvs.length) return '';
+    const rows=filteredWInvs.map(x=>{
       const st=getStatus(x);
       const boxes=toNum(x.boxes);
       const rem=calcRem(x);
@@ -2062,7 +2106,7 @@ function renderEmpWeekly(){
       const empWkKey = key.replace(/[^a-zA-Z0-9]/g,'_');
       return `<tr class="${st==='complete'?'wcomp':st==='overage'?'wover':''}">
         <td style="width:28px;text-align:center;padding:4px"><input type="checkbox" class="wpdf-chk" data-wk="emp_${empWkKey}" data-url="${x.fileUrl||''}" data-name="${(x.filename||x.invoice_number||String(x.id)).replace(/"/g,'')}" style="width:15px;height:15px;cursor:pointer" ${!x.fileUrl?'title="No PDF on this device"':''}></td>
-        <td class="wv">${esc(x.vendor||'—')}</td>
+        <td class="wv">${vcaps(x.vendor||'—')}</td>
         <td class="wd">${esc(x.date||'—')}</td>
         <td class="wi">${x.fileUrl?`<span style="color:var(--blue);font-weight:500;text-decoration:underline;cursor:pointer" onclick="openLocalFile('${x.fileUrl}','${(x.filename||x.invoice_number||'invoice').replace(/'/g,'')}')" title="Click to download PDF">${esc(x.invoice_number||'—')} 📎</span>`:esc(x.invoice_number||'—')}</td>
         <td style="text-align:center;font-weight:600">${boxes||'—'}</td>
@@ -2204,7 +2248,7 @@ function renderArchive(){
     const rows = wk.invoices
       .sort((a,b) => ms(b.date)-ms(a.date))
       .map(x => `<tr>
-        <td style="font-weight:500;color:var(--navy)">${esc(x.vendor||'—')}</td>
+        <td style="font-weight:500;color:var(--navy)">${vcaps(x.vendor||'—')}</td>
         <td style="color:var(--text2);font-size:11px">${esc(x.date||'—')}</td>
         <td style="color:var(--blue);font-size:11px">${esc(x.invoice_number||'—')}</td>
         <td style="text-align:center">${toNum(x.boxes)||'—'}</td>
@@ -2270,6 +2314,7 @@ function ms(s){if(!s)return 0;const d=new Date(s);return isNaN(d)?0:d.getTime();
 function safeId(id){return String(id).replace(/[^a-zA-Z0-9_-]/g,'_');}
 function amt(s){if(!s)return 0;return parseFloat(String(s).replace(/[^0-9.]/g,''))||0;}
 function esc(s){return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');}
+function vcaps(s){return esc((s||'').toUpperCase());}
 function save(){
   localStorage.setItem('ck_inv',JSON.stringify(invoices));
   sbSaveInvoices().then(()=>{
@@ -2281,6 +2326,193 @@ function save(){
   });
 }
 function toast(msg,type='ok'){const t=document.createElement('div');t.className=`toast ${type}`;t.textContent=msg;document.getElementById('toasts').appendChild(t);setTimeout(()=>t.remove(),4000);}
+
+
+
+// ─── STATUS FILTERS ───────────────────────────────────────────────────────────
+let invStatusFilter = 'all';
+let empStatusFilter = 'all';
+
+function setInvFilter(f, btn){
+  invStatusFilter = f;
+  document.querySelectorAll('#invFilterBar .fpill').forEach(b=>b.classList.remove('active'));
+  btn.classList.add('active');
+  renderTbl();
+}
+
+function setEmpFilter(f, btn){
+  empStatusFilter = f;
+  document.querySelectorAll('#empFilterBar .fpill').forEach(b=>b.classList.remove('active'));
+  btn.classList.add('active');
+  renderEmpWeekly();
+}
+
+// ═══════════════════════════════════════════════════════
+// PIN LOGIN SYSTEM
+// Roles: admin=full | secondary=no dashboard | stock=receiving only
+// ═══════════════════════════════════════════════════════
+const ROLE_LABELS = { admin:'Admin', secondary:'Secondary', stock:'Stock' };
+
+let pinUsers = JSON.parse(localStorage.getItem('ck_pin_users') || 'null');
+if(!pinUsers || !pinUsers.length){
+  pinUsers = [{ name:'Admin', pin:'0000', role:'admin' }];
+  localStorage.setItem('ck_pin_users', JSON.stringify(pinUsers));
+}
+
+let currentUser = null;
+let pinBuffer = '';
+
+function savePinUsers(){
+  localStorage.setItem('ck_pin_users', JSON.stringify(pinUsers));
+}
+
+function pinKey(digit){
+  if(pinBuffer.length >= 4) return;
+  pinBuffer += digit;
+  updatePinDots();
+  if(pinBuffer.length === 4) setTimeout(checkPin, 150);
+}
+
+function pinBackspace(){
+  pinBuffer = pinBuffer.slice(0,-1);
+  updatePinDots();
+  document.getElementById('pinError').textContent = '';
+}
+
+function pinClear(){
+  pinBuffer = '';
+  updatePinDots();
+  document.getElementById('pinError').textContent = '';
+}
+
+function updatePinDots(){
+  for(let i=0;i<4;i++){
+    document.getElementById('pd'+i).classList.toggle('filled', i < pinBuffer.length);
+  }
+}
+
+function checkPin(){
+  // Find user by PIN
+  const matched = pinUsers.find(u => u.pin === pinBuffer);
+  if(matched){
+    currentUser = matched;
+    document.getElementById('pinOverlay').classList.add('hidden');
+    document.getElementById('pinSub').textContent = 'Invoice Tracker — Enter your PIN';
+    applyRoleRestrictions(currentUser.role);
+    document.getElementById('adminBtnLabel').textContent = currentUser.name;
+    document.getElementById('currentUserLabel').textContent = currentUser.name + ' — ' + ROLE_LABELS[currentUser.role];
+    document.getElementById('adminBtn').style.display = '';
+    toast('Welcome, ' + currentUser.name + '!', 'ok');
+    pinBuffer = ''; updatePinDots();
+  } else {
+    document.getElementById('pinError').textContent = 'Incorrect PIN — try again';
+    // Brief shake animation
+    const box = document.querySelector('.pin-box');
+    box.style.animation='shake .3s';
+    setTimeout(()=>box.style.animation='',350);
+    pinBuffer = ''; updatePinDots();
+  }
+}
+
+function applyRoleRestrictions(role){
+  const tabs = {
+    invoices:  document.querySelector('.tab-btn[onclick*="invoices"]'),
+    dashboard: document.querySelector('.tab-btn[onclick*="dashboard"]'),
+    employee:  document.querySelector('.tab-btn[onclick*="employee"]'),
+    archive:   document.querySelector('.tab-btn[onclick*="archive"]'),
+  };
+  // Reset all first
+  Object.values(tabs).forEach(t=>{ if(t) t.style.display=''; });
+  document.getElementById('exportBtn').style.display='';
+  const aliasBtn = document.querySelector('[onclick*="aliasModal"]');
+  if(aliasBtn) aliasBtn.style.display='';
+
+  if(role === 'stock'){
+    if(tabs.invoices) tabs.invoices.style.display='none';
+    if(tabs.dashboard) tabs.dashboard.style.display='none';
+    if(tabs.archive) tabs.archive.style.display='none';
+    document.getElementById('exportBtn').style.display='none';
+    if(aliasBtn) aliasBtn.style.display='none';
+    if(tabs.employee) tabs.employee.click();
+  } else if(role === 'secondary'){
+    if(tabs.dashboard) tabs.dashboard.style.display='none';
+  }
+  // admin: full access already restored above
+}
+
+function pinLogout(){
+  currentUser = null;
+  pinBuffer = '';
+  closeM('adminMod');
+  // Restore all UI before locking
+  document.querySelectorAll('.tab-btn').forEach(b=>b.style.display='');
+  document.getElementById('exportBtn').style.display='';
+  const aliasBtn = document.querySelector('[onclick*="aliasModal"]');
+  if(aliasBtn) aliasBtn.style.display='';
+  document.getElementById('adminBtn').style.display='none';
+  updatePinDots();
+  document.getElementById('pinError').textContent='';
+  document.getElementById('pinOverlay').classList.remove('hidden');
+}
+
+function openAdminIfAllowed(){
+  if(!currentUser) return;
+  if(currentUser.role === 'stock'){ toast('No admin access','wrn'); return; }
+  renderAdminUserList();
+  openM('adminMod');
+}
+
+function renderAdminUserList(){
+  const el = document.getElementById('adminUserList');
+  if(!pinUsers.length){ el.innerHTML='<div style="color:var(--text3);font-size:13px;padding:8px">No users</div>'; return; }
+  el.innerHTML = pinUsers.map((u,i)=>`
+    <div class="admin-user-row">
+      <span style="flex:1;font-weight:600;font-size:13px;color:var(--navy)">${esc(u.name)}</span>
+      <span class="admin-badge badge-${u.role}">${ROLE_LABELS[u.role]}</span>
+      <span style="font-size:11px;color:var(--text3);margin:0 10px">PIN: ••••</span>
+      <button onclick="adminDeleteUser(${i})" style="background:#fee2e2;color:#dc2626;border:none;padding:3px 10px;border-radius:5px;font-size:11px;cursor:pointer">Remove</button>
+    </div>
+  `).join('');
+}
+
+function adminAddUser(){
+  if(currentUser?.role !== 'admin'){ toast('Only Admin can add users','wrn'); return; }
+  const name = document.getElementById('newUserName').value.trim();
+  const pin  = document.getElementById('newUserPin').value.trim();
+  const role = document.getElementById('newUserRole').value;
+  if(!name){ toast('Enter a name','wrn'); return; }
+  if(!/^\d{4}$/.test(pin)){ toast('PIN must be exactly 4 digits','wrn'); return; }
+  if(pinUsers.some(u=>u.pin===pin)){ toast('That PIN is already in use','wrn'); return; }
+  if(pinUsers.some(u=>u.name.toLowerCase()===name.toLowerCase())){ toast('Name already exists','wrn'); return; }
+  pinUsers.push({name, pin, role});
+  savePinUsers();
+  document.getElementById('newUserName').value='';
+  document.getElementById('newUserPin').value='';
+  renderAdminUserList();
+  toast('User added: '+name,'ok');
+}
+
+function adminDeleteUser(i){
+  if(currentUser?.role !== 'admin'){ toast('Only Admin can remove users','wrn'); return; }
+  if(pinUsers[i]?.name === currentUser.name){ toast('Cannot remove yourself','wrn'); return; }
+  const removed = pinUsers.splice(i,1)[0];
+  savePinUsers();
+  renderAdminUserList();
+  toast(removed.name+' removed','ok');
+}
+
+// Add shake keyframe to page
+// Keyboard support for PIN pad
+document.addEventListener('keydown', e=>{
+  if(document.getElementById('pinOverlay').classList.contains('hidden')) return;
+  if(e.key >= '0' && e.key <= '9') pinKey(e.key);
+  else if(e.key === 'Backspace') pinBackspace();
+  else if(e.key === 'Escape') pinClear();
+});
+
+const _shakeStyle = document.createElement('style');
+_shakeStyle.textContent = '@keyframes shake{0%,100%{transform:translateX(0)}20%,60%{transform:translateX(-8px)}40%,80%{transform:translateX(8px)}}';
+document.head.appendChild(_shakeStyle);
 
 // ─── INIT ─────────────────────────────────────────────────────────────────────
 updateKeyUI();
@@ -2308,5 +2540,68 @@ if(!getKey()) setTimeout(()=>openM('apiMod'),500);
 
 
 </script>
+
+<!-- ═══ PIN LOGIN OVERLAY ═══ -->
+<div id="pinOverlay">
+  <div class="pin-box">
+    <div class="pin-logo">Cee Kay</div>
+    <div class="pin-sub" id="pinSub">Invoice Tracker — Enter your PIN</div>
+    <div class="pin-dots">
+      <div class="pin-dot" id="pd0"></div>
+      <div class="pin-dot" id="pd1"></div>
+      <div class="pin-dot" id="pd2"></div>
+      <div class="pin-dot" id="pd3"></div>
+    </div>
+    <div class="pin-pad">
+      <button class="pin-key" onclick="pinKey('1')">1</button>
+      <button class="pin-key" onclick="pinKey('2')">2</button>
+      <button class="pin-key" onclick="pinKey('3')">3</button>
+      <button class="pin-key" onclick="pinKey('4')">4</button>
+      <button class="pin-key" onclick="pinKey('5')">5</button>
+      <button class="pin-key" onclick="pinKey('6')">6</button>
+      <button class="pin-key" onclick="pinKey('7')">7</button>
+      <button class="pin-key" onclick="pinKey('8')">8</button>
+      <button class="pin-key" onclick="pinKey('9')">9</button>
+      <button class="pin-key pin-clear" onclick="pinBackspace()">⌫</button>
+      <button class="pin-key" onclick="pinKey('0')">0</button>
+      <button class="pin-key pin-clear" onclick="pinClear()">✕</button>
+    </div>
+    <div class="pin-error" id="pinError"></div>
+  </div>
+</div>
+
+<!-- ═══ ADMIN SETTINGS MODAL ═══ -->
+<div class="ov" id="adminMod">
+  <div class="modal" style="max-width:520px">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px">
+      <h2 style="margin:0">⚙ Admin Settings</h2>
+      <button onclick="closeM('adminMod')" style="background:none;border:none;font-size:20px;cursor:pointer;color:var(--text3)">✕</button>
+    </div>
+    <div style="font-size:13px;color:var(--text2);margin-bottom:16px">Manage users and access levels. PIN must be exactly 4 digits.</div>
+
+    <div id="adminUserList" style="margin-bottom:20px"></div>
+
+    <div style="border-top:1px solid var(--border);padding-top:16px">
+      <div style="font-size:13px;font-weight:600;color:var(--navy);margin-bottom:10px">Add New User</div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap">
+        <input id="newUserName" placeholder="Name" style="flex:2;min-width:100px;padding:8px 12px;border:1px solid var(--border2);border-radius:7px;font-size:13px;font-family:Inter,sans-serif"/>
+        <input id="newUserPin" placeholder="4-digit PIN" maxlength="4" type="password"
+          style="flex:1;min-width:80px;padding:8px 12px;border:1px solid var(--border2);border-radius:7px;font-size:13px;font-family:Inter,sans-serif"/>
+        <select id="newUserRole" style="flex:2;min-width:110px;padding:8px 12px;border:1px solid var(--border2);border-radius:7px;font-size:13px;font-family:Inter,sans-serif;background:var(--surface)">
+          <option value="admin">Admin (full access)</option>
+          <option value="secondary">Secondary (no dashboard)</option>
+          <option value="stock">Stock (receiving only)</option>
+        </select>
+        <button onclick="adminAddUser()" style="background:var(--blue);color:#fff;border:none;padding:8px 18px;border-radius:7px;font-size:13px;font-weight:600;cursor:pointer">Add</button>
+      </div>
+    </div>
+
+    <div style="border-top:1px solid var(--border);padding-top:14px;margin-top:14px;display:flex;justify-content:space-between;align-items:center">
+      <div style="font-size:11px;color:var(--text3)">Logged in as: <strong id="currentUserLabel">—</strong></div>
+      <button onclick="pinLogout()" style="background:#fee2e2;color:#dc2626;border:none;padding:7px 16px;border-radius:6px;font-size:12px;font-weight:600;cursor:pointer">🔒 Lock Screen</button>
+    </div>
+  </div>
+</div>
+
 </body>
 </html>
