@@ -448,10 +448,12 @@ tbody tr:hover .delbtn,tbody tr:hover .editbtn{opacity:1;}
     <button class="tab-btn" onclick="showPage('dashboard',this)">📊 Dashboard</button>
     <button class="tab-btn" onclick="showPage('employee',this)">👤 Receiving</button>
     <button class="tab-btn" onclick="showPage('archive',this)">📁 Archive</button>
+    <button class="tab-btn" id="settingsTab" onclick="showPage('settings',this)" style="display:none">⚙ Settings</button>
   </div>
   <div class="hdr-right">
     <div class="api-pill" onclick="openM('aliasModal')" title="Manage vendor aliases">⚙ Aliases</div>
-    <div class="api-pill" id="adminBtn" onclick="openAdminIfAllowed()" title="Admin settings" style="display:none">👤 <span id="adminBtnLabel">Admin</span></div>
+    <div class="api-pill" id="adminBtn" style="cursor:default;display:none">👤 <span id="adminBtnLabel">—</span></div>
+    <button id="lockBtn" onclick="pinLogout()" title="Lock screen" style="display:none;background:rgba(255,255,255,.15);border:1px solid rgba(255,255,255,.25);color:#fff;padding:5px 12px;border-radius:6px;font-size:12px;cursor:pointer;font-family:Inter,sans-serif">🔒 Lock</button>
     <div class="api-pill" onclick="openM('apiMod')">
       <div class="dot" id="apiDot"></div><span id="apiTxt">No API Key</span>
     </div>
@@ -594,10 +596,12 @@ tbody tr:hover .delbtn,tbody tr:hover .editbtn{opacity:1;}
 <!-- ═══ EMPLOYEE RECEIVING PAGE ═══ -->
 <div class="page" id="page-employee">
 
-  <!-- Upload + Alert top row -->
+  <!-- Alert + Upload top row (alerts LEFT, upload RIGHT) -->
   <div style="display:flex;gap:16px;margin-bottom:16px;flex-wrap:wrap;align-items:stretch">
-    <!-- Drop zone left -->
-    <div style="flex:1;min-width:260px">
+    <!-- Alerts left -->
+    <div style="flex:2;min-width:260px" id="empAlertWrap"></div>
+    <!-- Drop zone right -->
+    <div style="flex:1;min-width:220px">
       <div class="dz" id="dz-emp" onclick="document.getElementById('fi-emp').click()" style="padding:18px;min-height:100px">
         <span class="dz-icon" style="font-size:24px">📂</span>
         <div class="dz-title" style="font-size:14px">Drop invoices here</div>
@@ -609,8 +613,6 @@ tbody tr:hover .delbtn,tbody tr:hover .editbtn{opacity:1;}
         <input type="file" id="fi-emp" multiple accept=".pdf,image/*" style="display:none"/>
       </div>
     </div>
-    <!-- Alert right -->
-    <div style="flex:1;min-width:260px" id="empAlertWrap"></div>
   </div>
 
   <!-- KPI row — no dollar amounts -->
@@ -632,6 +634,78 @@ tbody tr:hover .delbtn,tbody tr:hover .editbtn{opacity:1;}
   <div class="emp-section-title">📦 Weekly Delivery Tracker <span>Enter received boxes below — updates save automatically</span></div>
   <div class="week-wrap" id="empWeekWrap"></div>
 
+</div>
+
+<!-- ═══ SETTINGS PAGE ═══ -->
+<div class="page" id="page-settings">
+  <div style="max-width:600px;margin:0 auto">
+
+    <div style="font-family:'Fraunces',serif;font-size:22px;color:var(--navy);font-weight:700;margin-bottom:4px">⚙ Settings</div>
+    <div style="font-size:12px;color:var(--text3);margin-bottom:24px">Manage users, access levels, and app settings.</div>
+
+    <!-- Current user info -->
+    <div style="background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:16px 20px;margin-bottom:20px;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px">
+      <div>
+        <div style="font-size:11px;color:var(--text3);font-weight:600;text-transform:uppercase;letter-spacing:.05em">Logged in as</div>
+        <div style="font-size:16px;font-weight:700;color:var(--navy)" id="settingsCurrentUser">—</div>
+        <div style="font-size:12px;color:var(--text2)" id="settingsCurrentRole">—</div>
+      </div>
+      <button onclick="pinLogout()" style="background:#fee2e2;color:#dc2626;border:none;padding:8px 18px;border-radius:7px;font-size:13px;font-weight:600;cursor:pointer">🔒 Lock Screen</button>
+    </div>
+
+    <!-- User list -->
+    <div style="background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:20px;margin-bottom:20px">
+      <div style="font-size:14px;font-weight:700;color:var(--navy);margin-bottom:16px">👥 Users</div>
+      <div id="settingsUserList"></div>
+    </div>
+
+    <!-- Add user — admin only -->
+    <div id="addUserSection" style="background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:20px;margin-bottom:20px">
+      <div style="font-size:14px;font-weight:700;color:var(--navy);margin-bottom:4px">➕ Add New User</div>
+      <div style="font-size:12px;color:var(--text3);margin-bottom:14px">PIN must be exactly 4 digits and unique.</div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px">
+        <div>
+          <label style="font-size:11px;font-weight:600;color:var(--text2);display:block;margin-bottom:4px">NAME</label>
+          <input id="newUserName" placeholder="Full name" style="width:100%;padding:9px 12px;border:1px solid var(--border2);border-radius:7px;font-size:13px;font-family:Inter,sans-serif;box-sizing:border-box"/>
+        </div>
+        <div>
+          <label style="font-size:11px;font-weight:600;color:var(--text2);display:block;margin-bottom:4px">4-DIGIT PIN</label>
+          <input id="newUserPin" placeholder="e.g. 1234" maxlength="4" type="password" style="width:100%;padding:9px 12px;border:1px solid var(--border2);border-radius:7px;font-size:13px;font-family:Inter,sans-serif;box-sizing:border-box"/>
+        </div>
+      </div>
+      <div style="margin-bottom:14px">
+        <label style="font-size:11px;font-weight:600;color:var(--text2);display:block;margin-bottom:6px">ACCESS LEVEL</label>
+        <div style="display:flex;gap:8px;flex-wrap:wrap">
+          <label style="flex:1;min-width:140px;border:2px solid var(--border2);border-radius:8px;padding:10px 14px;cursor:pointer;display:flex;align-items:flex-start;gap:8px" id="roleAdminLbl">
+            <input type="radio" name="newUserRole" value="admin" checked style="margin-top:2px">
+            <div><div style="font-weight:600;font-size:13px;color:var(--navy)">Admin</div><div style="font-size:11px;color:var(--text3)">Full access — all tabs, settings, export</div></div>
+          </label>
+          <label style="flex:1;min-width:140px;border:2px solid var(--border2);border-radius:8px;padding:10px 14px;cursor:pointer;display:flex;align-items:flex-start;gap:8px" id="roleSecLbl">
+            <input type="radio" name="newUserRole" value="secondary" style="margin-top:2px">
+            <div><div style="font-weight:600;font-size:13px;color:var(--navy)">Secondary</div><div style="font-size:11px;color:var(--text3)">All tabs except Dashboard</div></div>
+          </label>
+          <label style="flex:1;min-width:140px;border:2px solid var(--border2);border-radius:8px;padding:10px 14px;cursor:pointer;display:flex;align-items:flex-start;gap:8px" id="roleStockLbl">
+            <input type="radio" name="newUserRole" value="stock" style="margin-top:2px">
+            <div><div style="font-weight:600;font-size:13px;color:var(--navy)">Stock</div><div style="font-size:11px;color:var(--text3)">Receiving tab only — upload, RCV inputs</div></div>
+          </label>
+        </div>
+      </div>
+      <button onclick="adminAddUser()" style="background:var(--blue);color:#fff;border:none;padding:10px 24px;border-radius:7px;font-size:13px;font-weight:600;cursor:pointer;width:100%">Add User</button>
+    </div>
+
+    <!-- Timeout setting -->
+    <div style="background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:20px">
+      <div style="font-size:14px;font-weight:700;color:var(--navy);margin-bottom:4px">⏱ Auto Lock</div>
+      <div style="font-size:12px;color:var(--text3);margin-bottom:14px">Lock screen after inactivity.</div>
+      <select id="timeoutSetting" onchange="saveTimeoutSetting()" style="padding:9px 12px;border:1px solid var(--border2);border-radius:7px;font-size:13px;font-family:Inter,sans-serif;background:var(--surface)">
+        <option value="0">Never</option>
+        <option value="5" selected>5 minutes</option>
+        <option value="10">10 minutes</option>
+        <option value="30">30 minutes</option>
+      </select>
+    </div>
+
+  </div>
 </div>
 
 <!-- ═══ ARCHIVE PAGE ═══ -->
@@ -992,11 +1066,13 @@ function showPage(n,btn){
   document.querySelectorAll('.page').forEach(p=>p.classList.remove('active'));
   document.querySelectorAll('.tab-btn').forEach(b=>b.classList.remove('active'));
   document.getElementById('page-'+n).classList.add('active');
-  btn.classList.add('active');
+  if(btn) btn.classList.add('active');
   if(n==='invoices')  { renderTbl(); updateStats(); }
   if(n==='dashboard') renderDash();
   if(n==='employee')  renderEmployee();
   if(n==='archive')   renderArchive();
+  if(n==='settings')  renderSettings();
+  resetIdleTimer();
 }
 
 // ─── MODALS ───────────────────────────────────────────────────────────────────
@@ -1187,36 +1263,119 @@ async function callClaudeMultiImage(pages){
 }
 
 // ─── SUPABASE STORAGE (cloud — works on all devices) ─────────────────────────
-async function uploadToStorage(file, invoiceId){
+// ─── FILE STORAGE: IndexedDB (local) + Supabase (cloud backup) ───────────────
+const _IDB = 'ceekay_files_v2';
+let _idb = null;
+
+function _openIDB(){
+  if(_idb) return Promise.resolve(_idb);
+  return new Promise((res,rej)=>{
+    const r = indexedDB.open(_IDB, 1);
+    r.onupgradeneeded = e => e.target.result.createObjectStore('files');
+    r.onsuccess = e => { _idb = e.target.result; res(_idb); };
+    r.onerror = () => rej(r.error);
+  });
+}
+
+async function _saveIDB(key, b64, type, name){
   try{
-    const ext = file.name.split('.').pop() || 'pdf';
+    const db = await _openIDB();
+    return new Promise((res,rej)=>{
+      const tx = db.transaction('files','readwrite');
+      tx.objectStore('files').put({b64,type,name}, key);
+      tx.oncomplete = ()=>res(true);
+      tx.onerror = ()=>rej(tx.error);
+    });
+  }catch(e){ return false; }
+}
+
+async function _getIDB(key){
+  try{
+    const db = await _openIDB();
+    return new Promise(res=>{
+      const r = db.transaction('files','readonly').objectStore('files').get(key);
+      r.onsuccess = ()=>res(r.result||null);
+      r.onerror = ()=>res(null);
+    });
+  }catch(e){ return null; }
+}
+
+async function uploadToStorage(file, invoiceId){
+  // 1. Save to local IndexedDB first (instant, works offline)
+  const b64 = await toB64(file);
+  await _saveIDB(invoiceId, b64, file.type, file.name);
+
+  // 2. Also upload to Supabase Storage (cloud backup for other devices)
+  try{
+    const ext = (file.name.split('.').pop()||'pdf').toLowerCase();
     const path = invoiceId + '.' + ext;
     const {error} = await supa.storage.from('invoices').upload(path, file, {
-      upsert: true, contentType: file.type || 'application/octet-stream'
+      upsert: true, contentType: file.type||'application/octet-stream'
     });
-    if(error){ console.warn('Storage upload error:', error.message); return ''; }
-    const {data} = supa.storage.from('invoices').getPublicUrl(path);
-    return data.publicUrl || '';
-  } catch(e){ console.warn('Storage error:', e.message); return ''; }
+    if(!error){
+      const {data} = supa.storage.from('invoices').getPublicUrl(path);
+      if(data?.publicUrl) return data.publicUrl;
+    }
+  }catch(e){}
+
+  // Return local marker if Supabase failed
+  return 'local:' + invoiceId;
 }
 
 // OPEN in new tab — clicking invoice # link
 async function openLocalFile(fileUrl, filename){
   if(!fileUrl){ toast('No PDF stored for this invoice','wrn'); return; }
-  window.open(fileUrl, '_blank');
+
+  // Try IndexedDB first (fastest, works on uploading device)
+  const key = fileUrl.replace('local:','');
+  const rec = await _getIDB(key);
+  if(rec && rec.b64){
+    const mime = rec.type || (filename&&filename.endsWith('.pdf')?'application/pdf':'image/jpeg');
+    const blob = _b64Blob(rec.b64, mime);
+    const url = URL.createObjectURL(blob);
+    window.open(url,'_blank');
+    setTimeout(()=>URL.revokeObjectURL(url), 60000);
+    return;
+  }
+
+  // Fall back to Supabase URL (works on other devices after bucket is public)
+  if(fileUrl.startsWith('http')){
+    window.open(fileUrl,'_blank');
+    return;
+  }
+  toast('⚠️ PDF not found — re-upload this invoice to view it','wrn');
 }
 
-// DOWNLOAD — for DL buttons in receiving/dashboard
+// DOWNLOAD — for DL buttons
 async function downloadLocalFile(fileUrl, filename){
   if(!fileUrl){ toast('No PDF stored for this invoice','wrn'); return false; }
-  const a = document.createElement('a');
-  a.href = fileUrl;
-  a.download = filename || 'invoice.pdf';
-  a.target = '_blank';
-  document.body.appendChild(a);
-  a.click();
-  document.body.removeChild(a);
-  return true;
+  const key = fileUrl.replace('local:','');
+  const rec = await _getIDB(key);
+  if(rec && rec.b64){
+    const mime = rec.type||'application/pdf';
+    const blob = _b64Blob(rec.b64, mime);
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href=url; a.download=filename||rec.name||'invoice.pdf';
+    document.body.appendChild(a); a.click(); document.body.removeChild(a);
+    setTimeout(()=>URL.revokeObjectURL(url),5000);
+    return true;
+  }
+  if(fileUrl.startsWith('http')){
+    const a = document.createElement('a');
+    a.href=fileUrl; a.download=filename||'invoice.pdf'; a.target='_blank';
+    document.body.appendChild(a); a.click(); document.body.removeChild(a);
+    return true;
+  }
+  toast('⚠️ PDF not found on this device — re-upload to download','wrn');
+  return false;
+}
+
+function _b64Blob(b64, type){
+  const bin = atob(b64);
+  const arr = new Uint8Array(bin.length);
+  for(let i=0;i<bin.length;i++) arr[i]=bin.charCodeAt(i);
+  return new Blob([arr],{type});
 }
 
 // ─── FILENAME HELPERS ─────────────────────────────────────────────────────────
@@ -2402,6 +2561,9 @@ function checkPin(){
     document.getElementById('adminBtnLabel').textContent = currentUser.name;
     document.getElementById('currentUserLabel').textContent = currentUser.name + ' — ' + ROLE_LABELS[currentUser.role];
     document.getElementById('adminBtn').style.display = '';
+    const lb = document.getElementById('lockBtn');
+    if(lb) lb.style.display = '';
+    setupIdleTimer();
     toast('Welcome, ' + currentUser.name + '!', 'ok');
     pinBuffer = ''; updatePinDots();
   } else {
@@ -2415,37 +2577,46 @@ function checkPin(){
 }
 
 function applyRoleRestrictions(role){
-  const tabs = {
-    invoices:  document.querySelector('.tab-btn[onclick*="invoices"]'),
-    dashboard: document.querySelector('.tab-btn[onclick*="dashboard"]'),
-    employee:  document.querySelector('.tab-btn[onclick*="employee"]'),
-    archive:   document.querySelector('.tab-btn[onclick*="archive"]'),
-  };
-  // Reset all first
-  Object.values(tabs).forEach(t=>{ if(t) t.style.display=''; });
+  // Reset all tabs visible first
+  document.querySelectorAll('.tab-btn').forEach(t=>t.style.display='');
   document.getElementById('exportBtn').style.display='';
   const aliasBtn = document.querySelector('[onclick*="aliasModal"]');
   if(aliasBtn) aliasBtn.style.display='';
+  // Settings tab — only admin and secondary
+  const settingsTab = document.getElementById('settingsTab');
 
   if(role === 'stock'){
-    if(tabs.invoices) tabs.invoices.style.display='none';
-    if(tabs.dashboard) tabs.dashboard.style.display='none';
-    if(tabs.archive) tabs.archive.style.display='none';
+    ['invoices','dashboard','archive'].forEach(name=>{
+      const t = document.querySelector(`.tab-btn[onclick*="${name}"]`);
+      if(t) t.style.display='none';
+    });
+    if(settingsTab) settingsTab.style.display='none';
     document.getElementById('exportBtn').style.display='none';
     if(aliasBtn) aliasBtn.style.display='none';
-    if(tabs.employee) tabs.employee.click();
+    // Force to receiving tab
+    const empTab = document.querySelector('.tab-btn[onclick*="employee"]');
+    if(empTab) empTab.click();
   } else if(role === 'secondary'){
-    if(tabs.dashboard) tabs.dashboard.style.display='none';
+    const dashTab = document.querySelector('.tab-btn[onclick*="dashboard"]');
+    if(dashTab) dashTab.style.display='none';
+    if(settingsTab) settingsTab.style.display='';
+  } else {
+    // Admin — show everything including settings
+    if(settingsTab) settingsTab.style.display='';
   }
-  // admin: full access already restored above
 }
 
 function pinLogout(){
+  clearTimeout(_idleTimer);
   currentUser = null;
   pinBuffer = '';
   closeM('adminMod');
-  // Restore all UI before locking
+  // Restore all tabs except settings (needs login)
   document.querySelectorAll('.tab-btn').forEach(b=>b.style.display='');
+  const settingsTab = document.getElementById('settingsTab');
+  if(settingsTab) settingsTab.style.display='none';
+  const lb = document.getElementById('lockBtn');
+  if(lb) lb.style.display='none';
   document.getElementById('exportBtn').style.display='';
   const aliasBtn = document.querySelector('[onclick*="aliasModal"]');
   if(aliasBtn) aliasBtn.style.display='';
@@ -2479,7 +2650,8 @@ function adminAddUser(){
   if(currentUser?.role !== 'admin'){ toast('Only Admin can add users','wrn'); return; }
   const name = document.getElementById('newUserName').value.trim();
   const pin  = document.getElementById('newUserPin').value.trim();
-  const role = document.getElementById('newUserRole').value;
+  const roleEl = document.querySelector('input[name="newUserRole"]:checked');
+  const role = roleEl ? roleEl.value : 'stock';
   if(!name){ toast('Enter a name','wrn'); return; }
   if(!/^\d{4}$/.test(pin)){ toast('PIN must be exactly 4 digits','wrn'); return; }
   if(pinUsers.some(u=>u.pin===pin)){ toast('That PIN is already in use','wrn'); return; }
@@ -2489,15 +2661,26 @@ function adminAddUser(){
   document.getElementById('newUserName').value='';
   document.getElementById('newUserPin').value='';
   renderAdminUserList();
+  renderSettings();
   toast('User added: '+name,'ok');
 }
 
 function adminDeleteUser(i){
   if(currentUser?.role !== 'admin'){ toast('Only Admin can remove users','wrn'); return; }
-  if(pinUsers[i]?.name === currentUser.name){ toast('Cannot remove yourself','wrn'); return; }
+  // If removing yourself, must have at least one other admin
+  if(pinUsers[i]?.name === currentUser.name){
+    const otherAdmins = pinUsers.filter((u,j)=>j!==i && u.role==='admin');
+    if(!otherAdmins.length){ toast('Cannot remove the only Admin — add another Admin first','wrn'); return; }
+    const removed = pinUsers.splice(i,1)[0];
+    savePinUsers();
+    toast(removed.name+' removed — you have been logged out','ok');
+    setTimeout(pinLogout, 1500);
+    return;
+  }
   const removed = pinUsers.splice(i,1)[0];
   savePinUsers();
   renderAdminUserList();
+  renderSettings();
   toast(removed.name+' removed','ok');
 }
 
@@ -2513,6 +2696,114 @@ document.addEventListener('keydown', e=>{
 const _shakeStyle = document.createElement('style');
 _shakeStyle.textContent = '@keyframes shake{0%,100%{transform:translateX(0)}20%,60%{transform:translateX(-8px)}40%,80%{transform:translateX(8px)}}';
 document.head.appendChild(_shakeStyle);
+
+// ─── CHANGE PIN ───────────────────────────────────────────────────────────────
+let _changePinIndex = -1;
+
+function openChangePIN(i){
+  // Only admin can change others' PINs; anyone can change their own
+  if(currentUser?.role !== 'admin' && pinUsers[i]?.name !== currentUser?.name){
+    toast('You can only change your own PIN','wrn'); return;
+  }
+  _changePinIndex = i;
+  document.getElementById('changePinName').textContent = pinUsers[i].name;
+  document.getElementById('changePinNew').value = '';
+  document.getElementById('changePinConfirm').value = '';
+  document.getElementById('changePinError').textContent = '';
+  openM('changePinMod');
+}
+
+function saveChangePIN(){
+  const newPin     = document.getElementById('changePinNew').value.trim();
+  const confirmPin = document.getElementById('changePinConfirm').value.trim();
+  const errEl      = document.getElementById('changePinError');
+  if(!/^\d{4}$/.test(newPin)){ errEl.textContent='PIN must be exactly 4 digits'; return; }
+  if(newPin !== confirmPin){ errEl.textContent='PINs do not match'; return; }
+  // Check not already in use by someone else
+  if(pinUsers.some((u,i)=>i!==_changePinIndex && u.pin===newPin)){
+    errEl.textContent='That PIN is already used by another user'; return;
+  }
+  const isMe = pinUsers[_changePinIndex]?.name === currentUser?.name;
+  pinUsers[_changePinIndex].pin = newPin;
+  savePinUsers();
+  closeM('changePinMod');
+  renderSettings();
+  toast('PIN updated for '+pinUsers[_changePinIndex].name,'ok');
+  // If changing own PIN, log out so they re-login with new PIN
+  if(isMe){
+    setTimeout(()=>{ toast('Please log in with your new PIN','ok'); pinLogout(); }, 1500);
+  }
+}
+
+// ─── SETTINGS PAGE ────────────────────────────────────────────────────────────
+function renderSettings(){
+  // Update current user display
+  if(currentUser){
+    const el = document.getElementById('settingsCurrentUser');
+    const rl = document.getElementById('settingsCurrentRole');
+    if(el) el.textContent = currentUser.name;
+    if(rl) rl.textContent = ROLE_LABELS[currentUser.role] + ' — ' + (
+      currentUser.role==='admin' ? 'Full access to all tabs and settings' :
+      currentUser.role==='secondary' ? 'All tabs except Dashboard' :
+      'Receiving tab only'
+    );
+  }
+  // Hide add user section for non-admin
+  const addSec = document.getElementById('addUserSection');
+  if(addSec) addSec.style.display = currentUser?.role==='admin' ? '' : 'none';
+  // Render user list
+  const el = document.getElementById('settingsUserList');
+  if(!el) return;
+  if(!pinUsers.length){ el.innerHTML='<div style="color:var(--text3);font-size:13px;padding:8px">No users</div>'; return; }
+  el.innerHTML = pinUsers.map((u,i)=>`
+    <div style="display:flex;align-items:center;gap:10px;padding:12px 0;border-bottom:1px solid var(--border);flex-wrap:wrap">
+      <div style="width:36px;height:36px;border-radius:50%;background:var(--blue-dim);display:flex;align-items:center;justify-content:center;font-weight:700;font-size:14px;color:var(--blue);flex-shrink:0">${esc(u.name.charAt(0).toUpperCase())}</div>
+      <div style="flex:1;min-width:100px">
+        <div style="font-weight:600;font-size:14px;color:var(--navy)">${esc(u.name)}${u.name===currentUser?.name?'<span style="font-size:10px;color:var(--blue);margin-left:6px;font-weight:600">YOU</span>':''}</div>
+        <div style="font-size:11px;color:var(--text3)">PIN: <span style="font-family:monospace;letter-spacing:3px;cursor:pointer" onclick="this.textContent=this.textContent==='••••'?pinUsers[${i}].pin:'••••'" title="Click to reveal">••••</span></div>
+      </div>
+      <span class="admin-badge badge-${u.role}">${ROLE_LABELS[u.role]}</span>
+      <button onclick="openChangePIN(${i})" style="background:var(--surface2);border:1px solid var(--border2);color:var(--navy);padding:4px 12px;border-radius:5px;font-size:12px;cursor:pointer">Change PIN</button>
+      ${currentUser?.role==='admin'
+        ? `<button onclick="adminDeleteUser(${i})" style="background:#fee2e2;color:#dc2626;border:none;padding:4px 12px;border-radius:5px;font-size:12px;cursor:pointer">Remove</button>`
+        : ''}
+    </div>
+  `).join('');
+  // Load timeout setting
+  const ts = document.getElementById('timeoutSetting');
+  if(ts) ts.value = localStorage.getItem('ck_timeout')||'5';
+}
+
+function saveTimeoutSetting(){
+  const val = document.getElementById('timeoutSetting').value;
+  localStorage.setItem('ck_timeout', val);
+  setupIdleTimer();
+  toast(val==='0' ? 'Auto-lock disabled' : `Auto-lock set to ${val} minutes`, 'ok');
+}
+
+// ─── IDLE TIMEOUT ──────────────────────────────────────────────────────────────
+let _idleTimer = null;
+
+function setupIdleTimer(){
+  clearTimeout(_idleTimer);
+  const mins = parseInt(localStorage.getItem('ck_timeout')||'5');
+  if(!mins || !currentUser) return;
+  _idleTimer = setTimeout(()=>{
+    if(currentUser){
+      toast('🔒 Screen locked due to inactivity','wrn');
+      pinLogout();
+    }
+  }, mins * 60 * 1000);
+}
+
+function resetIdleTimer(){
+  if(currentUser) setupIdleTimer();
+}
+
+// Reset idle timer on any user interaction
+['click','keydown','touchstart','mousemove'].forEach(evt=>{
+  document.addEventListener(evt, resetIdleTimer, { passive: true });
+});
 
 // ─── INIT ─────────────────────────────────────────────────────────────────────
 updateKeyUI();
@@ -2600,6 +2891,25 @@ if(!getKey()) setTimeout(()=>openM('apiMod'),500);
       <div style="font-size:11px;color:var(--text3)">Logged in as: <strong id="currentUserLabel">—</strong></div>
       <button onclick="pinLogout()" style="background:#fee2e2;color:#dc2626;border:none;padding:7px 16px;border-radius:6px;font-size:12px;font-weight:600;cursor:pointer">🔒 Lock Screen</button>
     </div>
+  </div>
+</div>
+
+<!-- ═══ CHANGE PIN MODAL ═══ -->
+<div class="ov" id="changePinMod">
+  <div class="modal" style="max-width:340px;text-align:center">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">
+      <h2 style="margin:0;font-size:18px">Change PIN</h2>
+      <button onclick="closeM('changePinMod')" style="background:none;border:none;font-size:20px;cursor:pointer;color:var(--text3)">✕</button>
+    </div>
+    <div style="font-size:13px;color:var(--text2);margin-bottom:16px">Changing PIN for: <strong id="changePinName">—</strong></div>
+    <div style="display:flex;flex-direction:column;gap:10px;margin-bottom:16px">
+      <input id="changePinNew" type="password" maxlength="4" placeholder="New 4-digit PIN"
+        style="padding:10px 14px;border:2px solid var(--border2);border-radius:8px;font-size:18px;text-align:center;letter-spacing:8px;font-family:Inter,sans-serif;width:100%;box-sizing:border-box"/>
+      <input id="changePinConfirm" type="password" maxlength="4" placeholder="Confirm PIN"
+        style="padding:10px 14px;border:2px solid var(--border2);border-radius:8px;font-size:18px;text-align:center;letter-spacing:8px;font-family:Inter,sans-serif;width:100%;box-sizing:border-box"/>
+    </div>
+    <div id="changePinError" style="color:#dc2626;font-size:12px;margin-bottom:12px;min-height:16px"></div>
+    <button onclick="saveChangePIN()" style="background:var(--blue);color:#fff;border:none;padding:10px 28px;border-radius:7px;font-size:14px;font-weight:600;cursor:pointer;width:100%">Save New PIN</button>
   </div>
 </div>
 
