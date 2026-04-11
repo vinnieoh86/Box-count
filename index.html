@@ -2877,13 +2877,18 @@ async function loadPinUsersFromSupabase(){
     const {data,error} = await supa.from('settings').select('value').eq('key','pin_users').maybeSingle();
     if(!error && data && data.value){
       const remote = JSON.parse(data.value);
-      if(remote && remote.length){
+      // Only use remote if it has actual users (not empty placeholder)
+      if(remote && remote.length > 0){
         pinUsers = remote;
         localStorage.setItem('ck_pin_users', JSON.stringify(pinUsers));
+        console.log('✓ Loaded', pinUsers.length, 'users from Supabase');
         return true;
       }
     }
   }catch(e){ console.warn('pin_users load error:',e.message); }
+  // Fall back to localStorage or default admin
+  const local = JSON.parse(localStorage.getItem('ck_pin_users')||'null');
+  if(local && local.length) pinUsers = local;
   return false;
 }
 
