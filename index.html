@@ -481,21 +481,7 @@ tbody tr:hover .delbtn,tbody tr:hover .editbtn{opacity:1;}
   </div>
 
   <!-- Camera Multi-Page Modal -->
-  <div id="camMod" class="modal" style="display:none;position:fixed;inset:0;z-index:999;background:rgba(0,0,0,.55);align-items:center;justify-content:center">
-    <div style="background:var(--surface);border-radius:14px;padding:28px;width:min(94vw,420px);box-shadow:0 20px 60px rgba(0,0,0,.3)">
-      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:18px">
-        <div style="font-size:16px;font-weight:700;color:var(--navy)">📷 Camera Invoice</div>
-        <button onclick="closeCameraMode()" style="background:none;border:none;font-size:20px;cursor:pointer;color:var(--text3)">✕</button>
-      </div>
-      <div style="font-size:13px;color:var(--text2);margin-bottom:16px">Shoot each page of the invoice one at a time. When done, tap <strong>Process Invoice</strong>.</div>
-      <div id="camPages" style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:16px;min-height:60px"></div>
-      <div style="display:flex;gap:10px;flex-wrap:wrap">
-        <button onclick="shootPage()" style="background:var(--blue);color:#fff;border:none;padding:10px 20px;border-radius:7px;font-size:13px;font-weight:600;cursor:pointer;flex:1">📸 Add Page</button>
-        <button id="camProcessBtn" onclick="processCameraPages()" disabled style="background:#10b981;color:#fff;border:none;padding:10px 20px;border-radius:7px;font-size:13px;font-weight:600;cursor:pointer;flex:1;opacity:.5">✓ Process Invoice</button>
-      </div>
-      <input type="file" id="fi-cam-page" accept="image/*" capture="environment" style="display:none" />
-    </div>
-  </div>
+
 
   <div class="sbar">
     <div class="sc sc-accent"><div class="sl">Total Invoices</div><div class="sv" id="sCount">0</div></div>
@@ -504,11 +490,7 @@ tbody tr:hover .delbtn,tbody tr:hover .editbtn{opacity:1;}
     <div class="sc"><div class="sl">Last Updated</div><div class="sv sm" id="sDate">—</div></div>
   </div>
 
-  <div class="pw" id="pw">
-    <div class="ph"><span id="pLbl">Processing...</span><span id="pCnt">0/0</span></div>
-    <div class="pt"><div class="pb" id="pb"></div></div>
-    <div class="pl" id="pl"></div>
-  </div>
+
 
   <div class="filter-bar" id="invFilterBar">
     <span style="font-size:11px;color:var(--text3);font-weight:600;margin-right:2px">FILTER:</span>
@@ -553,6 +535,16 @@ tbody tr:hover .delbtn,tbody tr:hover .editbtn{opacity:1;}
     <div class="kpi"><div class="kpi-label">Total Spent</div><div class="kpi-val md" id="dTotal">$0.00</div><div class="kpi-sub" id="dSub">—</div></div>
     <div class="kpi"><div class="kpi-label">Avg Invoice</div><div class="kpi-val md" id="dAvg">$0.00</div><div class="kpi-sub">per invoice</div></div>
     <div class="kpi"><div class="kpi-label">Top Vendor</div><div class="kpi-val md" id="dTopV" style="font-size:14px;padding-top:4px">—</div><div class="kpi-sub" id="dTopA">—</div></div>
+  </div>
+
+  <!-- Status Filter Bar -->
+  <div class="filter-bar" id="dashFilterBar" style="margin-bottom:16px">
+    <span style="font-size:11px;color:var(--text3);font-weight:600;margin-right:2px">STATUS:</span>
+    <button class="fpill active" onclick="setDashStatusFilter('all',this)">All</button>
+    <button class="fpill f-pending" onclick="setDashStatusFilter('pending',this)">Pending</button>
+    <button class="fpill f-partial" onclick="setDashStatusFilter('partial',this)">Partial</button>
+    <button class="fpill f-complete" onclick="setDashStatusFilter('complete',this)">Complete</button>
+    <button class="fpill f-overage" onclick="setDashStatusFilter('overage',this)">Overage</button>
   </div>
 
   <!-- Charts -->
@@ -602,7 +594,11 @@ tbody tr:hover .delbtn,tbody tr:hover .editbtn{opacity:1;}
     <div style="flex:2;min-width:260px" id="empAlertWrap"></div>
     <!-- Drop zone right -->
     <div style="flex:1;min-width:220px">
-      <div class="dz" id="dz-emp" onclick="document.getElementById('fi-emp').click()" style="padding:18px;min-height:100px">
+      <div class="dz" id="dz-emp" onclick="document.getElementById('fi-emp').click()" style="padding:18px;min-height:100px"
+           ondragenter="event.preventDefault();this.classList.add('over')"
+           ondragover="event.preventDefault();event.stopPropagation();this.classList.add('over')"
+           ondragleave="if(!this.contains(event.relatedTarget))this.classList.remove('over')"
+           ondrop="event.preventDefault();event.stopPropagation();this.classList.remove('over');const f=Array.from(event.dataTransfer.files).filter(f=>f.type==='application/pdf'||f.type.startsWith('image/')||f.name.match(/\.pdf$/i));if(f.length)processFiles(f.map(renameWithTimestamp))">
         <span class="dz-icon" style="font-size:24px">📂</span>
         <div class="dz-title" style="font-size:14px">Drop invoices here</div>
         <div class="dz-sub" style="font-size:11px">PDF or photo</div>
@@ -753,17 +749,17 @@ tbody tr:hover .delbtn,tbody tr:hover .editbtn{opacity:1;}
     <h2>Edit Invoice</h2>
     <p>Correct any field below. Vendor name changes will persist going forward.</p>
     <label class="modal-label">Vendor</label>
-    <input type="text" id="edit-vendor" placeholder="Vendor name" />
+    <input type="text" id="edit-vendor" placeholder="Vendor name" onkeydown="editFieldEnter(event,'edit-date')" />
     <label class="modal-label">Invoice Date</label>
-    <input type="text" id="edit-date" placeholder="MM/DD/YYYY" />
+    <input type="text" id="edit-date" placeholder="MM/DD/YYYY" onkeydown="editFieldEnter(event,'edit-invoice')" />
     <label class="modal-label">Invoice #</label>
-    <input type="text" id="edit-invoice" placeholder="Invoice number" />
+    <input type="text" id="edit-invoice" placeholder="Invoice number" onkeydown="editFieldEnter(event,'edit-boxes')" />
     <label class="modal-label">Boxes</label>
-    <input type="number" id="edit-boxes" placeholder="Number of boxes" min="0" />
+    <input type="number" id="edit-boxes" placeholder="Number of boxes" min="0" onkeydown="editFieldEnter(event,'edit-qty')" />
     <label class="modal-label">Items Shipped <span style="font-size:10px;color:var(--text3)">(approx qty)</span></label>
-    <input type="number" id="edit-qty" placeholder="Total items/pieces shipped" min="0" />
+    <input type="number" id="edit-qty" placeholder="Total items/pieces shipped" min="0" onkeydown="editFieldEnter(event,'edit-total')" />
     <label class="modal-label">Total Amount</label>
-    <input type="text" id="edit-total" placeholder="e.g. $1,234.56" />
+    <input type="text" id="edit-total" placeholder="e.g. $1,234.56" onkeydown="if(event.key==='Enter'){event.preventDefault();saveEdit();}" />
     <div class="mbtns"><button class="bs" onclick="closeM('editMod')">Cancel</button><button class="bp" onclick="saveEdit()">Save Changes</button></div>
   </div>
 </div>
@@ -803,6 +799,13 @@ tbody tr:hover .delbtn,tbody tr:hover .editbtn{opacity:1;}
 
 <div class="twrap" id="toasts"></div>
 
+<!-- Progress panel — body level, visible from any tab -->
+<div class="pw" id="pw" style="position:fixed;bottom:20px;right:20px;z-index:500;min-width:320px;max-width:420px">
+  <div class="ph"><span id="pLbl">Processing...</span><span id="pCnt">0/0</span></div>
+  <div class="pt"><div class="pb" id="pb"></div></div>
+  <div class="pl" id="pl"></div>
+</div>
+
 <script>
 // ─── SUPABASE ─────────────────────────────────────────────────────────────────
 const SUPA_URL = 'https://ucqathphqoijoadxqwja.supabase.co';
@@ -820,6 +823,7 @@ async function sbSaveInvoices(){
     qty_shipped: x.qty_shipped!=null && x.qty_shipped!=='' ? parseInt(x.qty_shipped,10)||0 : 0,
     added_at: x.addedAt||new Date().toISOString(),
     file_url: x.fileUrl||'',
+    idb_key: x.idbKey||'',
     rcv1: x.rcv1!=null && x.rcv1!=='' ? parseInt(x.rcv1,10)||0 : 0,
     rcv1ts: x.rcv1ts||'',
     rcv2: x.rcv2!=null && x.rcv2!=='' ? parseInt(x.rcv2,10)||0 : 0,
@@ -867,6 +871,7 @@ async function sbLoadAll(){
         id:r.id, vendor:r.vendor, date:r.date,
         invoice_number:r.invoice_number, filename:r.filename,
         fileUrl:r.file_url||'',
+        idbKey:r.idb_key||'',
         boxes:r.boxes,
         total: r.total!=null ? '$'+parseFloat(r.total).toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2}) : '',
         qty_shipped:r.qty_shipped,
@@ -1217,8 +1222,10 @@ async function processMultiPageCamera(pages, ts){
       const id = Date.now()+Math.random();
       // Upload first page as representative image to Supabase Storage
       const fileUrl = await uploadToStorage(pages[0], String(id).replace(/\./g,'_'));
+      const camIdbKey = String(id).replace(/\./g,'_');
       invoices.push({...res, id, addedAt:new Date().toISOString(), filename,
         fileUrl: fileUrl||'',
+        idbKey: camIdbKey,
         uploadedBy: currentUser?.name||'Unknown',
         qty_shipped:res.qty_shipped||'',
         rcv1:'',rcv1ts:'',rcv2:'',rcv2ts:'',rcv3:'',rcv3ts:'',
@@ -1326,9 +1333,11 @@ async function uploadToStorage(file, invoiceId){
 async function openLocalFile(fileUrl, filename){
   if(!fileUrl){ toast('No PDF stored for this invoice','wrn'); return; }
 
-  // Try IndexedDB first (fastest, works on uploading device)
+  // Try IndexedDB — check multiple key formats
   const key = fileUrl.replace('local:','');
-  const rec = await _getIDB(key);
+  let rec = await _getIDB(key);
+  // Also try inv_ prefix format
+  if(!rec){ rec = await _getIDB('inv_' + key.replace('inv_','')); }
   if(rec && rec.b64){
     const mime = rec.type || (filename&&filename.endsWith('.pdf')?'application/pdf':'image/jpeg');
     const blob = _b64Blob(rec.b64, mime);
@@ -1350,22 +1359,51 @@ async function openLocalFile(fileUrl, filename){
 async function downloadLocalFile(fileUrl, filename){
   if(!fileUrl){ toast('No PDF stored for this invoice','wrn'); return false; }
   const key = fileUrl.replace('local:','');
-  const rec = await _getIDB(key);
+  let rec = await _getIDB(key);
+  if(!rec){ rec = await _getIDB('inv_' + key.replace('inv_','')); }
   if(rec && rec.b64){
-    const mime = rec.type||'application/pdf';
+    const mime = rec.type || 'application/pdf';
+    // Decode base64 to bytes and force download via iframe trick (bypasses popup block)
     const blob = _b64Blob(rec.b64, mime);
     const url = URL.createObjectURL(blob);
+    // Use hidden iframe for PDF download — not blocked by popup blocker
+    const iframe = document.createElement('iframe');
+    iframe.style.cssText = 'display:none;position:fixed;top:-100px';
+    iframe.src = url;
+    document.body.appendChild(iframe);
+    // Also trigger anchor download as fallback
     const a = document.createElement('a');
-    a.href=url; a.download=filename||rec.name||'invoice.pdf';
-    document.body.appendChild(a); a.click(); document.body.removeChild(a);
-    setTimeout(()=>URL.revokeObjectURL(url),5000);
+    a.href = url;
+    a.download = filename || rec.name || 'invoice.pdf';
+    a.style.display = 'none';
+    document.body.appendChild(a);
+    a.click();
+    setTimeout(()=>{
+      document.body.removeChild(a);
+      document.body.removeChild(iframe);
+      URL.revokeObjectURL(url);
+    }, 8000);
+    toast('⬇ Downloading '+( filename||rec.name||'invoice.pdf'),'ok');
     return true;
   }
   if(fileUrl.startsWith('http')){
-    const a = document.createElement('a');
-    a.href=fileUrl; a.download=filename||'invoice.pdf'; a.target='_blank';
-    document.body.appendChild(a); a.click(); document.body.removeChild(a);
-    return true;
+    // For Supabase URLs — fetch as blob first to force download
+    try{
+      toast('⬇ Fetching PDF…','ok');
+      const resp = await fetch(fileUrl);
+      const blob = await resp.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url; a.download = filename||'invoice.pdf';
+      a.style.display='none';
+      document.body.appendChild(a); a.click();
+      setTimeout(()=>{ document.body.removeChild(a); URL.revokeObjectURL(url); },5000);
+      return true;
+    }catch(e){
+      // Last resort — open in tab
+      window.open(fileUrl,'_blank');
+      return true;
+    }
   }
   toast('⚠️ PDF not found on this device — re-upload to download','wrn');
   return false;
@@ -1424,6 +1462,7 @@ async function processFiles(files, overrideDelay=null){
         const fileUrl = await uploadToStorage(files[i], safeId);
         invoices.push({...res,id,addedAt:new Date().toISOString(),filename:files[i].name,
           fileUrl: fileUrl||'',
+          idbKey: safeId,
           uploadedBy: currentUser?.name||'Unknown',
           qty_shipped: res.qty_shipped||'',
           rcv1:'',rcv1ts:'',rcv2:'',rcv2ts:'',rcv3:'',rcv3ts:'',
@@ -1433,6 +1472,8 @@ async function processFiles(files, overrideDelay=null){
         items[i].innerHTML=`<span>✓</span><span>${files[i].name} — <strong>${res.vendor}</strong> · ${res.total}</span>`;
         added++;
         renderTbl();updateStats();
+        // Queue background itemized parse — starts after main upload finishes
+        _itemizedQueue.push({inv: invoices[invoices.length-1], idbKey: safeId});
       }
     }catch(e){
       items[i].className='pi err';
@@ -1449,6 +1490,8 @@ async function processFiles(files, overrideDelay=null){
     }
   }
   save();renderTbl();updateStats();
+  // Start background itemized parse for newly uploaded invoices
+  if(_itemizedQueue.length) setTimeout(runItemizedQueue, 2000);
 
   // Build summary
   const errors = Array.from(document.querySelectorAll('#pl .pi.err')).map(el=>el.querySelector('span:last-child').textContent);
@@ -1556,6 +1599,213 @@ async function callClaude(file){
   }
   throw new Error(lastErr||'Failed after 2 attempts');
 }
+
+// ─── ITEMIZED EXCEL EXPORT ────────────────────────────────────────────────────
+// ─── ITEMIZED PARSE CACHE ────────────────────────────────────────────────────
+// Parsed data stored in IDB under key 'itemized_' + idbKey
+// Background parse runs after each upload so Excel is instant
+
+async function getItemizedCache(key){
+  try{
+    const db = await _openIDB();
+    return new Promise(res=>{
+      const r = db.transaction('files','readonly').objectStore('files').get('itemized_'+key);
+      r.onsuccess=()=>res(r.result||null); r.onerror=()=>res(null);
+    });
+  }catch(e){return null;}
+}
+
+async function setItemizedCache(key, data){
+  try{
+    const db = await _openIDB();
+    return new Promise((res,rej)=>{
+      const tx = db.transaction('files','readwrite');
+      tx.objectStore('files').put(data,'itemized_'+key);
+      tx.oncomplete=()=>res(true); tx.onerror=()=>rej(tx.error);
+    });
+  }catch(e){return false;}
+}
+
+// Called after each successful invoice upload — runs in background
+async function backgroundParseItemized(inv, rec){
+  if(!inv||!rec||!rec.b64) return;
+  const cacheKey = inv.idbKey || String(inv.id).replace(/\./g,'_');
+  // Don't re-parse if already cached
+  const existing = await getItemizedCache(cacheKey);
+  if(existing) return;
+  try{
+    const parsed = await callClaudeItemized(rec, inv.vendor||'');
+    if(parsed && parsed.items && parsed.items.length){
+      await setItemizedCache(cacheKey, parsed);
+      // Update invoice row to show ready indicator
+      const row = document.querySelector(`tr[data-id="${inv.id}"]`);
+      if(row){
+        const btn = row.querySelector('[data-itemized-btn]');
+        if(btn){ btn.title='Itemized Excel ready'; btn.textContent='📊'; btn.style.opacity='1'; }
+      }
+    }
+  }catch(e){ console.warn('Background itemized parse failed:', e.message); }
+}
+
+async function callClaudeItemized(rec, vendorName){
+  const vendorLower = (vendorName||'').toLowerCase();
+  let vendorHint = '';
+  if(vendorLower.includes('sensationnel')||vendorLower.includes('hair zone')||vendorLower.includes('outre')||vendorLower.includes('sun taiyang')){
+    vendorHint = 'FORMAT: Sensationnel/Outre. Columns: QTY SHIPPED | DESCRIPTION | COLOR-QTY | UNIT PRICE | DISC.PRICE | EXT PRICE. Colors below description as "CODE- QTY" pairs (1B- 3, 2- 5 etc). Backordered = qty_shipped:0.';
+  } else if(vendorLower.includes('shake')||vendorLower.includes('mayde')||vendorLower.includes('bloom')){
+    vendorHint = 'FORMAT: Shake-N-Go/Mayde. Columns: QTY ORDERED | QTY SHIPPED | ITEM# | DESCRIPTION | List/Your Price | Discounted Amt. Colors on next line as "COLOR - QTY" pairs. Backorder shown as "COLOR - 0 (X)".';
+  } else if(vendorLower.includes('red beauty')||vendorLower.includes('ivy kiss')||vendorLower.includes('red')){
+    vendorHint = 'FORMAT: Red Beauty/Ivy Kiss. Columns: QTY.ORD | SHIPPED | SRP | ITEM# | DESCRIPTION | UNIT PRICE | D/C% | D/C UNIT PRICE | AMOUNT. Use D/C UNIT PRICE as your_price.';
+  } else if(vendorLower.includes('laflare')||vendorLower.includes('la flare')){
+    vendorHint = 'FORMAT: Laflare. Columns: ORD | SHIP | DESCRIPTION | UNIT | PRICE | AMOUNT. Style codes in description as #CODE : QTY format. Each style code = separate row.';
+  }
+
+  const prompt = `Extract ALL line items from this invoice. Return ONLY valid JSON, no markdown, no explanation.
+${vendorHint}
+
+{"items":[{"item_number":"code or null","description":"product name","colors":[{"color":"1B","qty_ordered":10,"qty_shipped":10}],"qty_ordered":10,"qty_shipped":10,"list_price":7.00,"your_price":5.00,"line_total":50.00}]}
+
+Rules: Include ALL items even qty_shipped=0. Numbers only no $ signs. Every page every item.`;
+
+  const mime = rec.type&&rec.type.startsWith('image/') ? rec.type : 'application/pdf';
+  const contentItem = mime.startsWith('image/')
+    ? {type:'image',source:{type:'base64',media_type:mime,data:rec.b64}}
+    : {type:'document',source:{type:'base64',media_type:'application/pdf',data:rec.b64}};
+
+  const r = await fetch('https://api.anthropic.com/v1/messages',{
+    method:'POST',
+    headers:{'Content-Type':'application/json','x-api-key':getKey(),
+      'anthropic-version':'2023-06-01','anthropic-dangerous-direct-browser-access':'true'},
+    body:JSON.stringify({model:'claude-sonnet-4-20250514',max_tokens:8000,
+      messages:[{role:'user',content:[contentItem,{type:'text',text:prompt}]}]})
+  });
+
+  if(!r.ok){
+    const eb = await r.json().catch(()=>({}));
+    throw new Error(eb.error?.message||'API error '+r.status);
+  }
+  const d = await r.json();
+  const textBlock = d.content.find(b=>b.type==='text');
+  if(!textBlock) throw new Error('No API response');
+  const raw = textBlock.text.trim().replace(/^```json\s*/,'').replace(/```\s*$/,'').trim();
+  // Extract JSON — handle both full object and items-only
+  const match = raw.match(/\{[\s\S]*\}/);
+  if(!match) throw new Error('No JSON found in response: '+raw.substring(0,100));
+  return JSON.parse(match[0]);
+}
+
+async function exportItemizedExcel(invoiceId){
+  const inv = invoices.find(x=>String(x.id)===String(invoiceId));
+  if(!inv){ toast('Invoice not found','wrn'); return; }
+  if(!inv.fileUrl && !inv.idbKey){ toast('No PDF stored — re-upload this invoice first','wrn'); return; }
+
+  const cacheKey = inv.idbKey || inv.fileUrl.replace('local:','');
+
+  // Check cache first — instant if already parsed
+  let parsed = await getItemizedCache(cacheKey);
+
+  if(!parsed){
+    toast('📊 Parsing line items… (first time only)','ok');
+    // Get PDF file
+    let rec = await _getIDB(cacheKey);
+    if(!rec){ rec = await _getIDB('inv_'+String(inv.id)); }
+    if(!rec){ rec = await _getIDB(String(inv.id).replace(/\./g,'_')); }
+    if(!rec && inv.fileUrl && inv.fileUrl.startsWith('http')){
+      try{
+        const resp = await fetch(inv.fileUrl);
+        const blob = await resp.blob();
+        const b64 = await new Promise(res=>{const rd=new FileReader();rd.onload=()=>res(rd.result.split(',')[1]);rd.readAsDataURL(blob);});
+        rec = {b64, type:blob.type||'application/pdf', name:inv.filename||'invoice.pdf'};
+      }catch(fe){ toast('⚠️ Could not fetch PDF: '+fe.message,'err'); return; }
+    }
+    if(!rec){ toast('⚠️ PDF not available — re-upload on this device first','wrn'); return; }
+    try{
+      parsed = await callClaudeItemized(rec, inv.vendor||'');
+      if(parsed && parsed.items) await setItemizedCache(cacheKey, parsed);
+    }catch(e){
+      toast('⚠️ Parse failed: '+e.message,'err');
+      console.error('Itemized parse error:', e);
+      return;
+    }
+  } else {
+    toast('📊 Building Excel…','ok');
+  }
+
+  if(!parsed||!parsed.items||!parsed.items.length){
+    toast('⚠️ No line items found in this invoice','wrn'); return;
+  }
+
+  buildItemizedXL(parsed, inv);
+}
+
+function buildItemizedXL(data, inv){
+  const vendor  = (data.vendor||inv.vendor||'').toUpperCase();
+  const invNum  = data.invoice_number||inv.invoice_number||'';
+
+  const headers = ['ITEM #','DESCRIPTION','COLOR','QTY ORD','QTY SHIP','LIST PRICE','YOUR PRICE','LINE TOTAL','STATUS'];
+  const rows = [headers];
+
+  (data.items||[]).forEach(item=>{
+    const colors  = Array.isArray(item.colors)&&item.colors.length ? item.colors : [null];
+    const qtyOrd  = item.qty_ordered  != null ? item.qty_ordered  : '';
+    const qtyShip = item.qty_shipped  != null ? item.qty_shipped  : '';
+    // Fill prices on EVERY row — not just first
+    const listP   = item.list_price  != null ? parseFloat(item.list_price)||0  : '';
+    const yourP   = item.your_price  != null ? parseFloat(item.your_price)||0  : '';
+    const lineT   = item.line_total  != null ? parseFloat(item.line_total)||0  : '';
+
+    colors.forEach((col)=>{
+      const colQtyOrd  = col&&col.qty_ordered  != null ? col.qty_ordered  : qtyOrd;
+      const colQtyShip = col&&col.qty_shipped != null ? col.qty_shipped : qtyShip;
+      const colStatus  = colQtyShip===0 && colQtyOrd>0 ? 'BACKORDER'
+                       : colQtyShip>0 && colQtyShip<colQtyOrd ? 'PARTIAL' : '';
+      rows.push([
+        item.item_number||'',
+        item.description||'',
+        col ? (col.color||'') : '',
+        colQtyOrd,
+        colQtyShip,
+        listP,   // same on every color row
+        yourP,   // same on every color row
+        lineT,   // same on every color row
+        colStatus
+      ]);
+    });
+  });
+
+  // Build worksheet with cell-level styles
+  const ws = XLSX.utils.aoa_to_sheet(rows);
+  const range = XLSX.utils.decode_range(ws['!ref']);
+
+  const hdrStyle  = {font:{bold:true,sz:11},alignment:{horizontal:'left',wrapText:false}};
+  const bodyStyle = {font:{sz:11},alignment:{horizontal:'left',wrapText:false}};
+
+  for(let R=range.s.r; R<=range.e.r; R++){
+    for(let C=range.s.c; C<=range.e.c; C++){
+      const addr = XLSX.utils.encode_cell({r:R,c:C});
+      if(!ws[addr]) ws[addr] = {t:'z',v:''};
+      ws[addr].s = R===0 ? hdrStyle : bodyStyle;
+    }
+  }
+
+  // Auto-fit column widths
+  const colWidths = headers.map(h=>h.length);
+  rows.slice(1).forEach(row=>{
+    row.forEach((val,ci)=>{
+      const len = val!=null ? String(val).length : 0;
+      if(len>colWidths[ci]) colWidths[ci]=len;
+    });
+  });
+  ws['!cols'] = colWidths.map(w=>({wch:Math.min(w+3,60)}));
+
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, 'Itemized');
+
+  const fname = `${vendor.replace(/[^A-Z0-9]/g,'_')}_${invNum}_itemized.xlsx`;
+  // cellStyles:true required for bold/alignment to render in Excel
+  XLSX.writeFile(wb, fname, {cellStyles:true});
+  toast('✅ Excel ready: '+fname,'ok');
+}
 function toB64(file){return new Promise((res,rej)=>{const r=new FileReader();r.onload=()=>res(r.result.split(',')[1]);r.onerror=rej;r.readAsDataURL(file);});}
 function sleep(ms){return new Promise(r=>setTimeout(r,ms));}
 
@@ -1581,6 +1831,9 @@ function handleRcvDash(id,field,val){
   inv[field]=val===''?'':toNum(val);
   inv[field+'ts']=val&&val!==''?fmtTs(new Date()):'';
   inv[field+'by']=val&&val!==''?(currentUser?.name||''):'';
+  // Flag if RCV was entered on an invoice with no box count
+  if(val&&val!==''&&!inv.boxes) inv.rcvOnMissing = true;
+  else if(!val) inv.rcvOnMissing = false;
   save(); // saves locally + queues Supabase sync
 
   // Fast targeted DOM update — no full re-render, no scroll jump
@@ -1792,17 +2045,11 @@ function renderTbl(){
       ? `<span style="color:var(--blue);font-weight:500;text-decoration:underline;cursor:pointer" onclick="openLocalFile('${x.fileUrl}','${esc((x.filename||x.invoice_number||'invoice').replace(/'/g,''))}')" title="Click to download PDF">${esc(x.invoice_number||'—')} 📎</span>`
       : `<span style="color:var(--blue);font-weight:500">${esc(x.invoice_number||'—')}</span>`;
     html+=`<tr data-id="${x.id}" class="${isComp?'comp-row':''}">
-      <td style="font-weight:600;color:var(--navy)">${vcaps(x.vendor||'—')}${newIds.has(x.id)?'<span class="new-tag">new</span>':''}<br>${x.uploadedBy?`<span style="font-size:9px;font-weight:400;color:var(--text3)">↑ ${esc(x.uploadedBy)}</span>`:''}</td>
+      <td style="font-weight:600;color:var(--navy)">${vcaps(x.vendor||'—')}${newIds.has(x.id)?'<span class="new-tag">new</span>':''}${x.rcvOnMissing?'<span style="background:#fef3c7;color:#92400e;font-size:10px;font-weight:600;padding:1px 6px;border-radius:4px;margin-left:5px;border:1px solid #fcd34d" title="RCV entered by staff — box count still unset">⚠ RCV w/ ? boxes</span>':''}<br>${x.uploadedBy?`<span style="font-size:9px;font-weight:400;color:var(--text3)">↑ ${esc(x.uploadedBy)}</span>`:''}</td>
       <td style="color:var(--text2);font-size:12px">${esc(x.date||'—')}</td>
-      <td>${invLink}</td>
+      <td style="white-space:nowrap">${invLink}${x.fileUrl?` <button onclick="exportItemizedExcel('${x.id}')" title="Download itemized Excel" style="background:none;border:none;cursor:pointer;font-size:14px;padding:0 2px;vertical-align:middle">📊</button>`:''}</td>
       <td><div class="fname" title="${esc(x.filename||'')}">${x.filename?'📎 '+esc(x.filename.length>20?x.filename.substring(0,18)+'…':x.filename):'—'}</div></td>
-      <td style="text-align:center">${boxes
-        ? boxes
-        : `<input type="number" min="0" placeholder="?" title="Enter box count"
-            style="width:46px;text-align:center;border:1px solid var(--blue);border-radius:4px;padding:2px 4px;font-size:12px;background:var(--surface2);color:var(--text)"
-            onchange="quickSetBoxes('${x.id}',this.value)"
-            onclick="event.stopPropagation()" />`
-      }</td>
+      <td style="text-align:center">${boxInputHtml(x.id, boxes,'invoice')}</td>
       <td style="text-align:right;font-family:'Fraunces',serif;font-weight:700">${esc(x.total||'—')}</td>
       <td style="text-align:center">${badge}</td>
       <td style="text-align:center;white-space:nowrap">
@@ -1841,13 +2088,86 @@ function filterTbl(){searchQ=document.getElementById('si').value;renderTbl();}
 
 // ─── QUICK BOX SET ───────────────────────────────────────────────────────────
 function quickSetBoxes(id, val){
+  if(!currentUser || currentUser.role==='stock'){
+    toast('Only Admin can set box count','wrn'); return;
+  }
   const inv = invoices.find(x=>String(x.id)===String(id));
   if(!inv) return;
   const n = parseInt(val,10);
   if(isNaN(n)||n<0) return;
   inv.boxes = n;
-  save(); renderTbl(); updateStats();
-  toast(`Box count set to ${n}`,'ok');
+  inv.boxEdited = true;
+  save(); renderTbl(); updateStats(); renderEmployee();
+  toast('Box count set to '+n,'ok');
+}
+
+// boxInputHtml — context-aware:
+//   tab='invoice' : missing boxes = editable by admin only
+//   tab='receiving' : always locked (? shown, no edit)
+function boxInputHtml(invId, boxes, tab){
+  if(boxes){
+    return `<span style="font-weight:600;color:var(--navy)">${boxes}</span>`;
+  }
+  // No box count from invoice
+  if(tab==='invoice' && currentUser && currentUser.role!=='stock'){
+    // Admin/secondary on invoice tab — can enter missing box count
+    return `<span style="display:inline-flex;align-items:center;gap:4px" title="Not on invoice — enter box count">
+      <input type="number" min="0" placeholder="?"
+        style="width:46px;text-align:center;border:1.5px solid #f59e0b;border-radius:4px;padding:2px 4px;font-size:12px;background:var(--surface2);color:var(--text)"
+        onchange="quickSetBoxes('${invId}',this.value)"
+        onkeydown="if(event.key==='Enter'){event.preventDefault();quickSetBoxes('${invId}',this.value);this.blur();}"
+        onclick="event.stopPropagation();this.select()" />
+      <span style="color:#f59e0b;font-size:11px;font-weight:700">?</span>
+    </span>`;
+  }
+  // Receiving tab (or stock user) — locked, just show ?
+  return `<span style="color:#f59e0b;font-weight:700;font-size:13px" title="Box count not on invoice — Admin will update in Invoices tab">?</span>`;
+}
+
+// Smart keyboard nav for RCV inputs
+// Enter = always jump to NEXT vendor's rcv1 (from any rcv field)
+// Tab   = natural browser flow rcv1 → rcv2 → rcv3
+
+function editFieldEnter(event, nextId){
+  if(event.key !== 'Enter') return;
+  event.preventDefault();
+  const next = document.getElementById(nextId);
+  if(next){ next.focus(); next.select(); }
+}
+
+function rcvKeyDown(event, input){
+  if(event.key !== 'Enter') return;
+  event.preventDefault();
+  // Trigger save via onchange if value changed
+  const val = input.value;
+  if(val !== input._lastVal) {
+    handleRcvDash(input.dataset.id, input.dataset.field, val);
+    input._lastVal = val;
+  }
+  // Navigate to next vendor's rcv1
+  // Snapshot all rcv-first inputs BEFORE any re-render, store by index
+  const currentId = input.dataset.id;
+  const allFirst = Array.from(document.querySelectorAll('.rcv-first'));
+  // Find the index of the rcv1 belonging to the CURRENT row
+  let curIdx = -1;
+  for(let i=0; i<allFirst.length; i++){
+    if(String(allFirst[i].dataset.id) === String(currentId)){
+      curIdx = i; break;
+    }
+  }
+  const nextInput = curIdx >= 0 && allFirst[curIdx+1] ? allFirst[curIdx+1] : null;
+  if(nextInput){
+    // Small delay only if this row just completed (DOM may update badge)
+    const inv = invoices.find(x=>String(x.id)===String(currentId));
+    const delay = inv && calcRem(inv)===0 ? 80 : 0;
+    setTimeout(()=>{
+      // Re-query after possible DOM update
+      const fresh = document.querySelector(`.rcv-first[data-id="${nextInput.dataset.id}"]`);
+      if(fresh){ fresh.focus(); fresh.select(); }
+    }, delay);
+  } else {
+    input.blur();
+  }
 }
 
 // ─── EDIT ─────────────────────────────────────────────────────────────────────
@@ -1895,12 +2215,20 @@ function setF(f,btn){dashF=f;document.querySelectorAll('#vF .dfb').forEach(b=>b.
 function setWF(f,btn){weekF=f;document.querySelectorAll('#wkF .dfb').forEach(b=>b.classList.remove('active'));btn.classList.add('active');renderWeekly();}
 
 function filteredInv(){
-  if(dashF==='all') return invoices;
-  const now=new Date();
-  return invoices.filter(x=>{const d=new Date(x.date);if(isNaN(d))return false;
-    if(dashF==='month') return d.getMonth()===now.getMonth()&&d.getFullYear()===now.getFullYear();
-    if(dashF==='week')  return(now-d)/86400000>=0&&(now-d)/86400000<7;
-    return true;});
+  let data = invoices;
+  const now = new Date();
+  if(dashF!=='all'){
+    data = data.filter(x=>{
+      const d=new Date(x.date); if(isNaN(d)) return false;
+      if(dashF==='month') return d.getMonth()===now.getMonth()&&d.getFullYear()===now.getFullYear();
+      if(dashF==='week')  return(now-d)/86400000>=0&&(now-d)/86400000<7;
+      return true;
+    });
+  }
+  if(dashStatusFilter!=='all'){
+    data = data.filter(x=>getStatus(x)===dashStatusFilter);
+  }
+  return data;
 }
 
 function renderDash(){
@@ -1980,7 +2308,7 @@ function renderVendorAcc(vmap,vcnt,data){
       return `<tr class="${st==='complete'?'comp-row':''}" data-vacc-id="${safeId(x.id)}">
         <td class="vd">${esc(x.date||'—')}</td>
         <td class="vi">${invLink}</td>
-        <td style="text-align:center;font-weight:600">${boxes||'—'}</td>
+        <td style="text-align:center">${boxInputHtml(x.id, boxes,'receiving')}</td>
         <td style="text-align:center">${received||'—'}</td>
         <td style="text-align:center">${remDisplay}</td>
         <td style="text-align:center">${badge}</td>
@@ -2039,10 +2367,13 @@ function renderWeekly(){
       const rem=calcRem(x);const isComp=rem===0&&(parseFloat(x.boxes)||0)>0;
       const b=parseFloat(x.boxes)||0;
       const rcvInp=(f)=>`<div class="wrec-cell">
-        <input class="wrec-inp" type="number" min="0" value="${esc(String(x[f]||''))}"
+        <input class="wrec-inp rcv-inp ${f==='rcv1'?'rcv-first':''}" type="number" min="0"
+          value="${esc(String(x[f]||''))}"
+          data-field="${f}" data-id="${x.id}"
           onchange="handleRcvDash('${x.id}','${f}',this.value)"
+          onkeydown="rcvKeyDown(event,this)"
           onfocus="this.select()"
-          ${!b?'disabled placeholder="—"':'placeholder="0"'} />
+          placeholder="0" />
         <div class="wrec-ts" id="wts_${safeId(x.id)}_${f}">${esc(x[f+'ts']||'')}${x[f+'by']?` <span style="color:#60a5fa;font-size:9px">${esc(x[f+'by'])}</span>`:''}</div>
       </div>`;
       const st=getStatus(x);
@@ -2112,7 +2443,7 @@ async function exportWeekPDFs(wkKey){
   const targets = checked.length ? checked : allChk.filter(c=>c.dataset.url);
 
   if(!targets.length){
-    toast('⚠️ No PDFs on this device — upload invoices on this device first','wrn');
+    toast('⚠️ No PDFs available for this week','wrn');
     return;
   }
 
@@ -2120,12 +2451,13 @@ async function exportWeekPDFs(wkKey){
   toast(`⬇ Downloading ${targets.length} PDF${targets.length!==1?'s':''}…`,'ok');
   for(let i=0;i<targets.length;i++){
     const t = targets[i];
-    if(!t.dataset.url) continue;
-    const ok = await downloadLocalFile(t.dataset.url, t.dataset.name || 'invoice.pdf');
+    const url = t.dataset.url;
+    if(!url) continue;
+    const ok = await downloadLocalFile(url, t.dataset.name || 'invoice.pdf');
     if(ok) downloaded++;
-    if(i < targets.length-1) await sleep(400);
+    if(i < targets.length-1) await sleep(500);
   }
-  if(downloaded === 0) toast('⚠️ Files not on this device — re-upload from this laptop','wrn');
+  if(downloaded === 0) toast('⚠️ PDFs not available — upload invoices first','wrn');
   else toast(`✅ ${downloaded} PDF${downloaded!==1?'s':''} downloaded`,'ok');
 }
 
@@ -2250,10 +2582,13 @@ function renderEmpWeekly(){
       const boxes=toNum(x.boxes);
       const rem=calcRem(x);
       const rcvInp=(f)=>`<div class="wrec-cell">
-        <input class="wrec-inp" type="number" min="0" value="${esc(String(x[f]||''))}"
+        <input class="wrec-inp rcv-inp ${f==='rcv1'?'rcv-first':''}" type="number" min="0"
+          value="${esc(String(x[f]||''))}"
+          data-field="${f}" data-id="${x.id}"
           onchange="handleRcvDash('${x.id}','${f}',this.value)"
+          onkeydown="rcvKeyDown(event,this)"
           onfocus="this.select()"
-          ${!boxes?'disabled placeholder="—"':'placeholder="0"'} />
+          placeholder="0" />
         <div class="wrec-ts">${esc(x[f+'ts']||'')}</div>
       </div>`;
       let badge='';
@@ -2268,7 +2603,7 @@ function renderEmpWeekly(){
         <td class="wv">${vcaps(x.vendor||'—')}</td>
         <td class="wd">${esc(x.date||'—')}</td>
         <td class="wi">${x.fileUrl?`<span style="color:var(--blue);font-weight:500;text-decoration:underline;cursor:pointer" onclick="openLocalFile('${x.fileUrl}','${(x.filename||x.invoice_number||'invoice').replace(/'/g,'')}')" title="Click to download PDF">${esc(x.invoice_number||'—')} 📎</span>`:esc(x.invoice_number||'—')}</td>
-        <td style="text-align:center;font-weight:600">${boxes||'—'}</td>
+        <td style="text-align:center">${boxInputHtml(x.id, boxes,'receiving')}</td>
         <td style="text-align:center">${rcvInp('rcv1')}</td>
         <td style="text-align:center">${rcvInp('rcv2')}</td>
         <td style="text-align:center">${rcvInp('rcv3')}</td>
@@ -2492,6 +2827,15 @@ function toast(msg,type='ok'){const t=document.createElement('div');t.className=
 let invStatusFilter = 'all';
 let empStatusFilter = 'all';
 
+let dashStatusFilter = 'all';
+
+function setDashStatusFilter(f, btn){
+  dashStatusFilter = f;
+  document.querySelectorAll('#dashFilterBar .fpill').forEach(b=>b.classList.remove('active'));
+  btn.classList.add('active');
+  renderDash();
+}
+
 function setInvFilter(f, btn){
   invStatusFilter = f;
   document.querySelectorAll('#invFilterBar .fpill').forEach(b=>b.classList.remove('active'));
@@ -2697,6 +3041,28 @@ const _shakeStyle = document.createElement('style');
 _shakeStyle.textContent = '@keyframes shake{0%,100%{transform:translateX(0)}20%,60%{transform:translateX(-8px)}40%,80%{transform:translateX(8px)}}';
 document.head.appendChild(_shakeStyle);
 
+// ─── SHOW PIN / CHANGE ROLE ───────────────────────────────────────────────────
+function toggleShowPIN(i){
+  const disp = document.getElementById('pinDisplay_'+i);
+  const btn  = document.getElementById('pinToggleBtn_'+i);
+  if(!disp||!btn) return;
+  const showing = btn.textContent === 'Hide';
+  disp.textContent = showing ? '••••' : pinUsers[i].pin;
+  btn.textContent  = showing ? 'Show' : 'Hide';
+}
+
+function adminChangeRole(i, newRole){
+  if(currentUser?.role !== 'admin'){ toast('Only Admin can change roles','wrn'); return; }
+  if(pinUsers[i]?.name === currentUser.name && newRole !== 'admin'){
+    toast('Cannot demote yourself — assign another Admin first','wrn');
+    renderSettings(); return;
+  }
+  pinUsers[i].role = newRole;
+  savePinUsers();
+  renderSettings();
+  toast(pinUsers[i].name + ' is now ' + ROLE_LABELS[newRole],'ok');
+}
+
 // ─── CHANGE PIN ───────────────────────────────────────────────────────────────
 let _changePinIndex = -1;
 
@@ -2756,16 +3122,25 @@ function renderSettings(){
   if(!el) return;
   if(!pinUsers.length){ el.innerHTML='<div style="color:var(--text3);font-size:13px;padding:8px">No users</div>'; return; }
   el.innerHTML = pinUsers.map((u,i)=>`
-    <div style="display:flex;align-items:center;gap:10px;padding:12px 0;border-bottom:1px solid var(--border);flex-wrap:wrap">
+    <div style="display:flex;align-items:center;gap:8px;padding:12px 0;border-bottom:1px solid var(--border);flex-wrap:wrap">
       <div style="width:36px;height:36px;border-radius:50%;background:var(--blue-dim);display:flex;align-items:center;justify-content:center;font-weight:700;font-size:14px;color:var(--blue);flex-shrink:0">${esc(u.name.charAt(0).toUpperCase())}</div>
-      <div style="flex:1;min-width:100px">
+      <div style="flex:1;min-width:120px">
         <div style="font-weight:600;font-size:14px;color:var(--navy)">${esc(u.name)}${u.name===currentUser?.name?'<span style="font-size:10px;color:var(--blue);margin-left:6px;font-weight:600">YOU</span>':''}</div>
-        <div style="font-size:11px;color:var(--text3)">PIN: <span style="font-family:monospace;letter-spacing:3px;cursor:pointer" onclick="this.textContent=this.textContent==='••••'?pinUsers[${i}].pin:'••••'" title="Click to reveal">••••</span></div>
+        <div style="font-size:11px;color:var(--text3);display:flex;align-items:center;gap:6px">
+          PIN: <span id="pinDisplay_${i}" style="font-family:monospace;letter-spacing:2px">••••</span>
+          <button onclick="toggleShowPIN(${i})" style="background:none;border:none;font-size:10px;color:var(--blue);cursor:pointer;padding:0" id="pinToggleBtn_${i}">Show</button>
+        </div>
       </div>
-      <span class="admin-badge badge-${u.role}">${ROLE_LABELS[u.role]}</span>
-      <button onclick="openChangePIN(${i})" style="background:var(--surface2);border:1px solid var(--border2);color:var(--navy);padding:4px 12px;border-radius:5px;font-size:12px;cursor:pointer">Change PIN</button>
       ${currentUser?.role==='admin'
-        ? `<button onclick="adminDeleteUser(${i})" style="background:#fee2e2;color:#dc2626;border:none;padding:4px 12px;border-radius:5px;font-size:12px;cursor:pointer">Remove</button>`
+        ? `<select onchange="adminChangeRole(${i},this.value)" style="padding:4px 8px;border:1px solid var(--border2);border-radius:5px;font-size:12px;font-family:Inter,sans-serif;background:var(--surface)">
+            <option value="admin" ${u.role==='admin'?'selected':''}>Admin</option>
+            <option value="secondary" ${u.role==='secondary'?'selected':''}>Secondary</option>
+            <option value="stock" ${u.role==='stock'?'selected':''}>Stock</option>
+           </select>`
+        : `<span class="admin-badge badge-${u.role}">${ROLE_LABELS[u.role]}</span>`}
+      <button onclick="openChangePIN(${i})" style="background:var(--surface2);border:1px solid var(--border2);color:var(--navy);padding:4px 10px;border-radius:5px;font-size:12px;cursor:pointer">Change PIN</button>
+      ${currentUser?.role==='admin'
+        ? `<button onclick="adminDeleteUser(${i})" style="background:#fee2e2;color:#dc2626;border:none;padding:4px 10px;border-radius:5px;font-size:12px;cursor:pointer">Remove</button>`
         : ''}
     </div>
   `).join('');
@@ -2805,6 +3180,63 @@ function resetIdleTimer(){
   document.addEventListener(evt, resetIdleTimer, { passive: true });
 });
 
+// ─── ITEMIZED PARSE QUEUE ─────────────────────────────────────────────────────
+// Processes one invoice at a time in background — never blocks UI
+const _itemizedQueue = [];
+let _itemizedRunning = false;
+
+async function runItemizedQueue(){
+  if(_itemizedRunning) return;
+  _itemizedRunning = true;
+  while(_itemizedQueue.length){
+    const job = _itemizedQueue.shift();
+    try{
+      const cacheKey = job.idbKey || String(job.inv.id).replace(/\./g,'_');
+      const existing = await getItemizedCache(cacheKey);
+      if(existing){ continue; } // already cached — skip
+      const rec = await _getIDB(cacheKey)
+               || await _getIDB('inv_'+String(job.inv.id))
+               || await _getIDB(String(job.inv.id).replace(/\./g,'_'));
+      if(!rec) continue; // no file on this device — skip silently
+      const parsed = await callClaudeItemized(rec, job.inv.vendor||'');
+      if(parsed&&parsed.items&&parsed.items.length){
+        await setItemizedCache(cacheKey, parsed);
+        console.log('✓ Itemized cached:', job.inv.vendor, job.inv.invoice_number);
+        // Update 📊 button to show ready
+        const row = document.querySelector(`tr[data-id="${job.inv.id}"]`);
+        if(row){
+          const btn = row.querySelector('[data-itemized-btn]');
+          if(btn){ btn.style.opacity='1'; btn.title='Itemized Excel ready — click to download'; }
+        }
+      }
+    }catch(e){
+      console.warn('Itemized queue error:', job.inv?.invoice_number, e.message);
+    }
+    // Small gap between API calls to avoid rate limits
+    await sleep(1500);
+  }
+  _itemizedRunning = false;
+}
+
+// Queue all invoices that don't have cached itemized data yet
+async function queueUncachedInvoices(){
+  if(!invoices.length) return;
+  let queued = 0;
+  for(const inv of invoices){
+    if(!inv.fileUrl && !inv.idbKey) continue;
+    const cacheKey = inv.idbKey || inv.fileUrl.replace('local:','');
+    const existing = await getItemizedCache(cacheKey);
+    if(!existing){
+      _itemizedQueue.push({inv, idbKey: cacheKey});
+      queued++;
+    }
+  }
+  if(queued > 0){
+    console.log(`📊 Queued ${queued} invoices for background itemized parse`);
+    runItemizedQueue();
+  }
+}
+
 // ─── INIT ─────────────────────────────────────────────────────────────────────
 updateKeyUI();
 (async()=>{
@@ -2815,6 +3247,8 @@ updateKeyUI();
   checkAutoArchive(); setInterval(checkAutoArchive,3600000);
   if(ok) toast('✓ Connected to team database','ok');
   else toast('⚠️ Offline mode — changes will sync when reconnected','wrn');
+  // Start background itemized parse for any invoices not yet cached
+  setTimeout(queueUncachedInvoices, 4000);
 
   // Auto-refresh every 30s to pick up changes from other devices
   setInterval(async()=>{
@@ -2831,6 +3265,23 @@ if(!getKey()) setTimeout(()=>openM('apiMod'),500);
 
 
 </script>
+
+<!-- ═══ CAMERA MODAL (body level — works from any tab) ═══ -->
+<div id="camMod" style="display:none;position:fixed;inset:0;z-index:9998;background:rgba(0,0,0,.55);align-items:center;justify-content:center">
+  <div style="background:var(--surface);border-radius:14px;padding:28px;width:min(94vw,420px);box-shadow:0 20px 60px rgba(0,0,0,.3)">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:18px">
+      <div style="font-size:16px;font-weight:700;color:var(--navy)">📷 Camera Invoice</div>
+      <button onclick="closeCameraMode()" style="background:none;border:none;font-size:20px;cursor:pointer;color:var(--text3)">✕</button>
+    </div>
+    <div style="font-size:13px;color:var(--text2);margin-bottom:16px">Shoot each page one at a time. Tap <strong>Process Invoice</strong> when done.</div>
+    <div id="camPages" style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:16px;min-height:60px"></div>
+    <div style="display:flex;gap:10px;flex-wrap:wrap">
+      <button onclick="shootPage()" style="background:var(--blue);color:#fff;border:none;padding:10px 20px;border-radius:7px;font-size:13px;font-weight:600;cursor:pointer;flex:1">📸 Add Page</button>
+      <button id="camProcessBtn" onclick="processCameraPages()" disabled style="background:#10b981;color:#fff;border:none;padding:10px 20px;border-radius:7px;font-size:13px;font-weight:600;cursor:pointer;flex:1;opacity:.5">✓ Process Invoice</button>
+    </div>
+    <input type="file" id="fi-cam-page" accept="image/*" capture="environment" style="display:none" />
+  </div>
+</div>
 
 <!-- ═══ PIN LOGIN OVERLAY ═══ -->
 <div id="pinOverlay">
