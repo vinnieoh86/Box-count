@@ -1168,7 +1168,10 @@ function shootPage(){
   input.onchange = e => {
     const f = e.target.files[0];
     if(!f) return;
-    cameraPages.push(f);
+    // Ensure valid mime type before storing — iPhone HEIC/empty fix
+    const safeMime = sanitizeMime(f.type||'');
+    const safeFile = safeMime !== f.type ? new File([f], f.name||'cam.jpg', {type:safeMime}) : f;
+    cameraPages.push(safeFile);
     const container = document.getElementById('camPages');
     const thumb = document.createElement('div');
     thumb.style.cssText = 'position:relative;width:70px;height:90px;border-radius:6px;overflow:hidden;border:2px solid var(--blue);background:var(--surface2)';
@@ -1197,8 +1200,10 @@ async function processCameraPages(){
   const ts = Date.now();
   const named = cameraPages.map((f,i) => renameFile(f, `CAM_${ts}_p${i+1}.jpg`));
   if(named.length === 1){
-    // Single page — process normally
-    processFiles(named);
+    // Single page — force jpeg mime and process
+    const pg = named[0];
+    const safePg = new File([pg], pg.name, {type: sanitizeMime(pg.type||'image/jpeg')});
+    processFiles([safePg]);
   } else {
     // Multi-page — send all images together in one Claude API call
     processMultiPageCamera(named, ts);
@@ -1263,9 +1268,13 @@ function sanitizeMime(type){
 async function callClaudeMultiImage(pages){
   const prompt='Extract invoice summary data and return ONLY a JSON object (no markdown, no explanation).\nFormat: {"vendor":"seller/supplier name (never Cee Kay)","date":"MM/DD/YYYY","invoice_number":"exact invoice number","boxes":"total carton/box count as integer or null","total":"final net total e.g. $1,234.56","qty_shipped":"total quantity of individual items/pieces shipped as integer or null"}\nThis is a multi-page invoice — all pages shown. Total and qty are usually on the last page. vendor = company selling TO Cee Kay.';
   const content = [];
-  for(const page of pages){
+  for(let pi=0; pi<pages.length; pi++){
+    const page = pages[pi];
+    const mime = sanitizeMime(page.type||'image/jpeg');
     const b64 = await toB64(page);
-    const mime = sanitizeMime(page.type);
+    if(!b64 || b64.length < 100){
+      throw new Error('Page '+(pi+1)+' image data is empty — try retaking the photo');
+    }
     content.push({type:'image',source:{type:'base64',media_type:mime,data:b64}});
   }
   content.push({type:'text',text:prompt});
@@ -1450,7 +1459,9 @@ function renameWithTimestamp(file){
 }
 
 function renameFile(file, newName){
-  return new File([file], newName, {type: file.type, lastModified: file.lastModified});
+  // Always force a valid MIME type — iPhone often sends empty or image/heic
+  const safeMime = sanitizeMime(file.type||'');
+  return new File([file], newName, {type: safeMime, lastModified: file.lastModified});
 }
 
 // ─── PROCESS ──────────────────────────────────────────────────────────────────
@@ -1731,31 +1742,17 @@ async function exportItemizedExcel(invoiceId){
   let parsed = await getItemizedCache(cacheKey);
 
   if(!parsed){
-    toast('📊 Reading invoice… please wait','ok');
-    // Get PDF file
-    let rec = await _getIDB(cacheKey);
-    if(!rec){ rec = await _getIDB('inv_'+String(inv.id)); }
-    if(!rec){ rec = await _getIDB(String(inv.id).replace(/\./g,'_')); }
-    if(!rec && inv.fileUrl && inv.fileUrl.startsWith('http')){
-      try{
-        const resp = await fetch(inv.fileUrl);
-        const blob = await resp.blob();
-        const b64 = await new Promise(res=>{const rd=new FileReader();rd.onload=()=>res(rd.result.split(',')[1]);rd.readAsDataURL(blob);});
-        rec = {b64, type:blob.type||'application/pdf', name:inv.filename||'invoice.pdf'};
-      }catch(fe){ toast('⚠️ Could not fetch PDF: '+fe.message,'err'); return; }
+    // Not cached yet — check if it's queued or just add it to front of queue
+    const alreadyQueued = _itemizedQueue.some(j=>String(j.inv.id)===String(inv.id));
+    if(!alreadyQueued){
+      // Add to FRONT of queue so it processes next
+      _itemizedQueue.unshift({inv, idbKey: cacheKey});
+      if(!_itemizedRunning) runItemizedQueue();
     }
-    if(!rec){ toast('⚠️ PDF not available — re-upload on this device first','wrn'); return; }
-    try{
-      parsed = await callClaudeItemized(rec, inv.vendor||'');
-      if(parsed && parsed.items) await setItemizedCache(cacheKey, parsed);
-    }catch(e){
-      toast('⚠️ Parse failed: '+e.message,'err');
-      console.error('Itemized parse error:', e);
-      return;
-    }
-  } else {
-    toast('📊 Building Excel…','ok');
+    toast('⏳ Still processing — check back in a moment and click 📊 again','wrn');
+    return;
   }
+  toast('📊 Building Excel…','ok');
 
   if(!parsed||!parsed.items||!parsed.items.length){
     toast('⚠️ No line items found in this invoice','wrn'); return;
@@ -2990,6 +2987,10 @@ function checkPin(){
     setupIdleTimer();
     toast('Welcome, ' + currentUser.name + '!', 'ok');
     pinBuffer = ''; updatePinDots();
+    // Render invoices immediately after login
+    renderTbl(); updateStats();
+    // Start background itemized parse after login (not at app load)
+    setTimeout(queueUncachedInvoices, 5000);
   } else {
     document.getElementById('pinError').textContent = 'Incorrect PIN — try again';
     // Brief shake animation
@@ -3181,19 +3182,24 @@ function saveChangePIN(){
   pinUsers[_changePinIndex].pin = newPin;
   savePinUsers();
   // Force close modal by directly hiding it
+  // Hard close the modal
   const mod = document.getElementById('changePinMod');
-  if(mod){ mod.classList.remove('show'); mod.style.opacity='0'; mod.style.pointerEvents='none'; }
+  if(mod){
+    mod.classList.remove('show');
+    mod.style.setProperty('opacity','0','important');
+    mod.style.setProperty('pointer-events','none','important');
+    mod.style.setProperty('display','none','important');
+    setTimeout(()=>{ mod.style.removeProperty('display'); },500);
+  }
   toast('PIN updated for '+userName,'ok');
-  setTimeout(()=>{ renderSettings(); }, 300);
+  setTimeout(()=>renderSettings(), 200);
   if(isMe){
     setTimeout(()=>{ toast('Log in with your new PIN','ok'); pinLogout(); }, 1800);
   }
 }
 
 // ─── SETTINGS PAGE ────────────────────────────────────────────────────────────
-async function renderSettings(){
-  // Always reload from Supabase first to show accurate user list
-  await loadPinUsersFromSupabase();
+function renderSettings(){
   // Update current user display
   if(currentUser){
     const el = document.getElementById('settingsCurrentUser');
@@ -3288,43 +3294,46 @@ async function runItemizedQueue(){
       const rec = await _getIDB(cacheKey)
                || await _getIDB('inv_'+String(job.inv.id))
                || await _getIDB(String(job.inv.id).replace(/\./g,'_'));
-      if(!rec) continue; // no file on this device — skip silently
+      if(!rec){ continue; } // no file on this device — skip silently
       const parsed = await callClaudeItemized(rec, job.inv.vendor||'');
       if(parsed&&parsed.items&&parsed.items.length){
         await setItemizedCache(cacheKey, parsed);
         console.log('✓ Itemized cached:', job.inv.vendor, job.inv.invoice_number);
-        // Update 📊 button to show ready
-        const row = document.querySelector(`tr[data-id="${job.inv.id}"]`);
-        if(row){
-          const btn = row.querySelector('[data-itemized-btn]');
-          if(btn){ btn.style.opacity='1'; btn.title='Itemized Excel ready — click to download'; }
-        }
       }
     }catch(e){
-      console.warn('Itemized queue error:', job.inv?.invoice_number, e.message);
+      // Rate limit hit — put back at end of queue and wait longer
+      if(e.message&&e.message.includes('rate limit')){
+        console.warn('Rate limit — pausing itemized queue 60s');
+        _itemizedQueue.push(job); // retry later
+        await sleep(60000);
+      } else {
+        console.warn('Itemized queue error:', job.inv?.invoice_number, e.message);
+      }
     }
-    // Small gap between API calls to avoid rate limits
-    await sleep(800);
+    // 12 seconds between each invoice — keeps well under 30k tokens/min rate limit
+    // (avg invoice ~2-4k tokens, 12s gap = max 5 per minute = ~20k tokens/min)
+    if(_itemizedQueue.length) await sleep(12000);
   }
   _itemizedRunning = false;
 }
 
 // Queue all invoices that don't have cached itemized data yet
+// Staggers start time to not interfere with app load
 async function queueUncachedInvoices(){
   if(!invoices.length) return;
-  let queued = 0;
+  const uncached = [];
   for(const inv of invoices){
     if(!inv.fileUrl && !inv.idbKey) continue;
     const cacheKey = inv.idbKey || inv.fileUrl.replace('local:','');
     const existing = await getItemizedCache(cacheKey);
-    if(!existing){
-      _itemizedQueue.push({inv, idbKey: cacheKey});
-      queued++;
-    }
+    if(!existing) uncached.push({inv, idbKey: cacheKey});
   }
-  if(queued > 0){
-    console.log(`📊 Queued ${queued} invoices for background itemized parse`);
-    runItemizedQueue();
+  if(uncached.length){
+    // Shuffle so different invoices get cached each session
+    uncached.sort(()=>Math.random()-0.5);
+    _itemizedQueue.push(...uncached);
+    console.log('📊 Queued', uncached.length, 'invoices for background itemized parse (12s apart)');
+    if(!_itemizedRunning) runItemizedQueue();
   }
 }
 
@@ -3343,9 +3352,6 @@ updateKeyUI();
   checkAutoArchive(); setInterval(checkAutoArchive,3600000);
   if(ok) toast('✓ Connected to team database','ok');
   else toast('⚠️ Offline mode — changes will sync when reconnected','wrn');
-  // Start background itemized parse for any invoices not yet cached
-  setTimeout(queueUncachedInvoices, 4000);
-
   // Auto-refresh every 30s to pick up changes from other devices
   setInterval(async()=>{
     const prevCount = invoices.length;
