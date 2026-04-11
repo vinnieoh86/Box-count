@@ -1695,32 +1695,35 @@ async function callClaudeItemized(rec, vendorName){
   const vendorLower = (vendorName||'').toLowerCase();
   let vendorHint = '';
   if(vendorLower.includes('sensationnel')||vendorLower.includes('hair zone')||vendorLower.includes('outre')||vendorLower.includes('sun taiyang')){
-    vendorHint = 'FORMAT: Sensationnel/Outre. Columns: QTY SHIPPED | DESCRIPTION | COLOR-QTY | UNIT PRICE | DISC.PRICE | EXT PRICE. Colors below description as "CODE- QTY" pairs (1B- 3, 2- 5 etc). Backordered = qty_shipped:0.';
+    vendorHint = 'FORMAT: Sensationnel/Outre. Columns: QTY SHIPPED | DESCRIPTION | COLOR-QTY | UNIT PRICE | DISC.PRICE | EXT PRICE. Colors below description as "CODE- QTY" pairs. Backordered = qty_shipped:0.';
   } else if(vendorLower.includes('shake')||vendorLower.includes('mayde')||vendorLower.includes('bloom')){
-    vendorHint = 'FORMAT: Shake-N-Go/Mayde. Columns: QTY ORDERED | QTY SHIPPED | ITEM# | DESCRIPTION | List/Your Price | Discounted Amt. Colors on next line as "COLOR - QTY" pairs. Backorder shown as "COLOR - 0 (X)".';
-  } else if(vendorLower.includes('red beauty')||vendorLower.includes('ivy kiss')||vendorLower.includes('red')){
+    vendorHint = 'FORMAT: Shake-N-Go/Mayde. Columns: QTY ORDERED | QTY SHIPPED | ITEM# | DESCRIPTION | List/Your Price | Discounted Amt. Colors on next line as "COLOR - QTY" pairs.';
+  } else if(vendorLower.includes('red beauty')||vendorLower.includes('ivy kiss')){
     vendorHint = 'FORMAT: Red Beauty/Ivy Kiss. Columns: QTY.ORD | SHIPPED | SRP | ITEM# | DESCRIPTION | UNIT PRICE | D/C% | D/C UNIT PRICE | AMOUNT. Use D/C UNIT PRICE as your_price.';
   } else if(vendorLower.includes('laflare')||vendorLower.includes('la flare')){
-    vendorHint = 'FORMAT: Laflare. Columns: ORD | SHIP | DESCRIPTION | UNIT | PRICE | AMOUNT. Style codes in description as #CODE : QTY format. Each style code = separate row.';
+    vendorHint = 'FORMAT: Laflare. Columns: ORD | SHIP | DESCRIPTION | UNIT | PRICE | AMOUNT. Style codes in description as #CODE : QTY.';
+  } else if(vendorLower.includes('pk international')||vendorLower.includes('pk beauty')){
+    vendorHint = 'FORMAT: PK International. Columns: LN# | ITEM NO | ITEM DESCRIPTION | UPC CODE | UM/CS | SIZE | ORDERED | SHIPPED | U/M | UNIT PRC | D% | EXT PRICE. NO STK = not shipped, qty_shipped=0. item_number = ITEM NO column. your_price = UNIT PRC. qty_ordered = ORDERED col.';
   }
 
-  const prompt = `Extract ALL line items from this invoice. Return ONLY valid JSON, no markdown, no explanation.
+  // For very large invoices (many pages), use a compact output format to stay under token limits
+  const prompt = `Extract ALL line items. Return ONLY valid JSON, no markdown.
 ${vendorHint}
-
-{"items":[{"item_number":"code or null","description":"product name","colors":[{"color":"1B","qty_ordered":10,"qty_shipped":10}],"qty_ordered":10,"qty_shipped":10,"list_price":7.00,"your_price":5.00,"line_total":50.00}]}
-
-Rules: Include ALL items even qty_shipped=0. Numbers only no $ signs. Every page every item.`;
+{"items":[{"item_number":"A10612","description":"product name","qty_ordered":9,"qty_shipped":9,"your_price":1.99,"line_total":17.91}]}
+Rules: Every item every page. qty_shipped=0 for NO STK items. Numbers only, no $ signs. Skip UPC/size columns.`;
 
   const mime = rec.type&&rec.type.startsWith('image/') ? sanitizeMime(rec.type) : 'application/pdf';
   const contentItem = mime.startsWith('image/')
     ? {type:'image',source:{type:'base64',media_type:mime,data:rec.b64}}
     : {type:'document',source:{type:'base64',media_type:'application/pdf',data:rec.b64}};
 
+  // Use up to 16000 tokens for large multi-page invoices
   const r = await fetch('https://api.anthropic.com/v1/messages',{
     method:'POST',
     headers:{'Content-Type':'application/json','x-api-key':getKey(),
       'anthropic-version':'2023-06-01','anthropic-dangerous-direct-browser-access':'true'},
-    body:JSON.stringify({model:'claude-sonnet-4-20250514',max_tokens:8000,
+    body:JSON.stringify({model:'claude-sonnet-4-20250514',max_tokens:16000,
+      system:'You are a JSON extraction assistant. Output ONLY valid JSON. Never truncate the items array — include every single line item.',
       messages:[{role:'user',content:[contentItem,{type:'text',text:prompt}]}]})
   });
 
@@ -1731,11 +1734,23 @@ Rules: Include ALL items even qty_shipped=0. Numbers only no $ signs. Every page
   const d = await r.json();
   const textBlock = d.content.find(b=>b.type==='text');
   if(!textBlock) throw new Error('No API response');
-  const raw = textBlock.text.trim().replace(/^```json\s*/,'').replace(/```\s*$/,'').trim();
-  // Extract JSON — handle both full object and items-only
-  const match = raw.match(/\{[\s\S]*\}/);
-  if(!match) throw new Error('No JSON found in response: '+raw.substring(0,100));
-  return JSON.parse(match[0]);
+  // Handle potentially truncated JSON gracefully
+  let raw = textBlock.text.trim().replace(/^```json\s*/,'').replace(/```\s*$/,'').trim();
+  const match = raw.match(/\{[\s\S]*/);
+  if(!match) throw new Error('No JSON in response');
+  let jsonStr = match[0];
+  // If truncated (missing closing braces), attempt repair
+  if(!jsonStr.endsWith('}')){
+    // Close any open array and object
+    const openBrackets = (jsonStr.match(/\[/g)||[]).length - (jsonStr.match(/\]/g)||[]).length;
+    const openBraces   = (jsonStr.match(/\{/g)||[]).length - (jsonStr.match(/\}/g)||[]).length;
+    // Remove trailing incomplete item
+    jsonStr = jsonStr.replace(/,\s*\{[^}]*$/, '');
+    for(let i=0;i<openBrackets;i++) jsonStr += ']';
+    for(let i=0;i<openBraces;i++)   jsonStr += '}';
+  }
+  try{ return JSON.parse(jsonStr); }
+  catch(e){ throw new Error('JSON parse failed — invoice may be too large for single parse'); }
 }
 
 async function exportItemizedExcel(invoiceId){
@@ -1749,15 +1764,27 @@ async function exportItemizedExcel(invoiceId){
   let parsed = await getItemizedCache(cacheKey);
 
   if(!parsed){
-    // Not cached yet — check if it's queued or just add it to front of queue
-    const alreadyQueued = _itemizedQueue.some(j=>String(j.inv.id)===String(inv.id));
-    if(!alreadyQueued){
-      // Add to FRONT of queue so it processes next
-      _itemizedQueue.unshift({inv, idbKey: cacheKey});
-      if(!_itemizedRunning) runItemizedQueue();
+    // Not cached — parse now on demand (large invoices are skipped in background queue)
+    let rec = await _getIDB(cacheKey)
+           || await _getIDB('inv_'+String(inv.id))
+           || await _getIDB(String(inv.id).replace(/\./g,'_'));
+    if(!rec && inv.fileUrl && inv.fileUrl.startsWith('http')){
+      try{
+        toast('📥 Fetching PDF…','ok');
+        const resp = await fetch(inv.fileUrl);
+        const blob = await resp.blob();
+        const b64 = await new Promise(r=>{const rd=new FileReader();rd.onload=()=>r(rd.result.split(',')[1]);rd.readAsDataURL(blob);});
+        rec = {b64, type:blob.type||'application/pdf', name:inv.filename||'invoice.pdf'};
+      }catch(fe){ toast('⚠️ Could not fetch PDF','err'); return; }
     }
-    toast('⏳ Still processing — check back in a moment and click 📊 again','wrn');
-    return;
+    if(!rec){ toast('⚠️ PDF not on this device — open on the device that uploaded it','wrn'); return; }
+    toast('📊 Parsing invoice… large invoices may take 20-30 seconds','ok');
+    try{
+      parsed = await callClaudeItemized(rec, inv.vendor||'');
+      if(parsed && parsed.items) await setItemizedCache(cacheKey, parsed);
+    }catch(e){
+      toast('⚠️ Parse failed: '+e.message,'err'); return;
+    }
   }
   toast('📊 Building Excel…','ok');
 
@@ -3340,6 +3367,12 @@ async function runItemizedQueue(){
                || await _getIDB('inv_'+String(job.inv.id))
                || await _getIDB(String(job.inv.id).replace(/\./g,'_'));
       if(!rec){ continue; } // no file on this device — skip silently
+      // Skip very large invoices in background queue — they'll parse on-demand when clicked
+      // Large = b64 over ~500KB which suggests a big multi-page PDF
+      if(rec.b64 && rec.b64.length > 700000){
+        console.log('Skipping large invoice in background queue (parse on-demand):', job.inv.invoice_number);
+        continue;
+      }
       const parsed = await callClaudeItemized(rec, job.inv.vendor||'');
       if(parsed&&parsed.items&&parsed.items.length){
         await setItemizedCache(cacheKey, parsed);
