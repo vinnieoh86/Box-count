@@ -88,14 +88,15 @@ header{background:var(--navy);padding:0 32px;display:flex;align-items:stretch;ju
 /* ─── PIN LOGIN ─────────────────────────────── */
 #pinOverlay{position:fixed;inset:0;background:#1e3a5f;z-index:9999;display:flex;align-items:center;justify-content:center;flex-direction:column;}
 #pinOverlay.hidden{display:none;}
-.pin-box{background:#fff;border-radius:16px;padding:36px 40px;width:min(92vw,380px);text-align:center;box-shadow:0 20px 60px rgba(0,0,0,.4);}
+.pin-box{background:#fff;border-radius:16px;padding:36px 40px;width:min(92vw,380px);text-align:center;box-shadow:0 20px 60px rgba(0,0,0,.4);touch-action:manipulation;}
+.pin-pad{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:16px;touch-action:manipulation;}
 .pin-logo{font-family:'Fraunces',serif;font-size:26px;color:#1e3a5f;font-weight:700;margin-bottom:4px;}
 .pin-sub{font-size:13px;color:#6b7280;margin-bottom:24px;}
 .pin-dots{display:flex;gap:12px;justify-content:center;margin-bottom:24px;}
 .pin-dot{width:18px;height:18px;border-radius:50%;border:2px solid #d1d5db;background:transparent;transition:all .15s;}
 .pin-dot.filled{background:#1e3a5f;border-color:#1e3a5f;}
-.pin-pad{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:16px;}
-.pin-key{background:#f3f4f6;border:none;border-radius:10px;padding:16px;font-size:20px;font-weight:600;cursor:pointer;color:#1e3a5f;transition:background .1s;}
+
+.pin-key{background:#f3f4f6;border:none;border-radius:10px;padding:16px;font-size:20px;font-weight:600;cursor:pointer;color:#1e3a5f;}
 .pin-key:hover{background:#e5e7eb;}
 .pin-key:active{background:#dbeafe;}
 .pin-clear{background:#fee2e2;color:#dc2626;}
@@ -1515,7 +1516,7 @@ async function processFiles(files, overrideDelay=null){
   }
   save();renderTbl();updateStats();
   // Start background itemized parse for newly uploaded invoices
-  if(_itemizedQueue.length) setTimeout(runItemizedQueue, 2000);
+  if(_itemizedQueue.length && !_itemizedRunning) setTimeout(runItemizedQueue, 500);
 
   // Build summary
   const errors = Array.from(document.querySelectorAll('#pl .pi.err')).map(el=>el.querySelector('span:last-child').textContent);
@@ -1730,7 +1731,7 @@ async function exportItemizedExcel(invoiceId){
   let parsed = await getItemizedCache(cacheKey);
 
   if(!parsed){
-    toast('📊 Parsing line items… (first time only)','ok');
+    toast('📊 Reading invoice… please wait','ok');
     // Get PDF file
     let rec = await _getIDB(cacheKey);
     if(!rec){ rec = await _getIDB('inv_'+String(inv.id)); }
@@ -2952,7 +2953,7 @@ function pinKey(digit){
   if(pinBuffer.length >= 4) return;
   pinBuffer += digit;
   updatePinDots();
-  if(pinBuffer.length === 4) setTimeout(checkPin, 150);
+  if(pinBuffer.length === 4) checkPin();
 }
 
 function pinBackspace(){
@@ -3176,13 +3177,16 @@ function saveChangePIN(){
     errEl.textContent='That PIN is already used by another user'; return;
   }
   const isMe = pinUsers[_changePinIndex]?.name === currentUser?.name;
+  const userName = pinUsers[_changePinIndex]?.name;
   pinUsers[_changePinIndex].pin = newPin;
   savePinUsers();
-  closeM('changePinMod');
-  renderSettings();
-  toast('PIN updated for '+pinUsers[_changePinIndex].name,'ok');
+  // Force close modal by directly hiding it
+  const mod = document.getElementById('changePinMod');
+  if(mod){ mod.classList.remove('show'); mod.style.opacity='0'; mod.style.pointerEvents='none'; }
+  toast('PIN updated for '+userName,'ok');
+  setTimeout(()=>{ renderSettings(); }, 300);
   if(isMe){
-    setTimeout(()=>{ toast('Log in with your new PIN','ok'); pinLogout(); }, 1500);
+    setTimeout(()=>{ toast('Log in with your new PIN','ok'); pinLogout(); }, 1800);
   }
 }
 
@@ -3300,7 +3304,7 @@ async function runItemizedQueue(){
       console.warn('Itemized queue error:', job.inv?.invoice_number, e.message);
     }
     // Small gap between API calls to avoid rate limits
-    await sleep(1500);
+    await sleep(800);
   }
   _itemizedRunning = false;
 }
@@ -3387,18 +3391,18 @@ if(!getKey()) setTimeout(()=>openM('apiMod'),500);
       <div class="pin-dot" id="pd3"></div>
     </div>
     <div class="pin-pad">
-      <button class="pin-key" onclick="pinKey('1')">1</button>
-      <button class="pin-key" onclick="pinKey('2')">2</button>
-      <button class="pin-key" onclick="pinKey('3')">3</button>
-      <button class="pin-key" onclick="pinKey('4')">4</button>
-      <button class="pin-key" onclick="pinKey('5')">5</button>
-      <button class="pin-key" onclick="pinKey('6')">6</button>
-      <button class="pin-key" onclick="pinKey('7')">7</button>
-      <button class="pin-key" onclick="pinKey('8')">8</button>
-      <button class="pin-key" onclick="pinKey('9')">9</button>
-      <button class="pin-key pin-clear" onclick="pinBackspace()">⌫</button>
-      <button class="pin-key" onclick="pinKey('0')">0</button>
-      <button class="pin-key pin-clear" onclick="pinClear()">✕</button>
+      <button class="pin-key" ontouchstart="event.preventDefault();pinKey('1')" onclick="pinKey('1')">1</button>
+      <button class="pin-key" ontouchstart="event.preventDefault();pinKey('2')" onclick="pinKey('2')">2</button>
+      <button class="pin-key" ontouchstart="event.preventDefault();pinKey('3')" onclick="pinKey('3')">3</button>
+      <button class="pin-key" ontouchstart="event.preventDefault();pinKey('4')" onclick="pinKey('4')">4</button>
+      <button class="pin-key" ontouchstart="event.preventDefault();pinKey('5')" onclick="pinKey('5')">5</button>
+      <button class="pin-key" ontouchstart="event.preventDefault();pinKey('6')" onclick="pinKey('6')">6</button>
+      <button class="pin-key" ontouchstart="event.preventDefault();pinKey('7')" onclick="pinKey('7')">7</button>
+      <button class="pin-key" ontouchstart="event.preventDefault();pinKey('8')" onclick="pinKey('8')">8</button>
+      <button class="pin-key" ontouchstart="event.preventDefault();pinKey('9')" onclick="pinKey('9')">9</button>
+      <button class="pin-key pin-clear" ontouchstart="event.preventDefault();pinBackspace()" onclick="pinBackspace()">⌫</button>
+      <button class="pin-key" ontouchstart="event.preventDefault();pinKey('0')" onclick="pinKey('0')">0</button>
+      <button class="pin-key pin-clear" ontouchstart="event.preventDefault();pinClear()" onclick="pinClear()">✕</button>
     </div>
     <div class="pin-error" id="pinError"></div>
   </div>
