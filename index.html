@@ -1271,8 +1271,10 @@ async function callClaudeMultiImage(pages){
   const content = [];
   for(let pi=0; pi<pages.length; pi++){
     const page = pages[pi];
-    const mime = sanitizeMime(page.type||'image/jpeg');
-    const b64 = await toB64(page);
+    // Compress if over limit — iPhone photos often 6-8MB, API max is 5MB
+    const compressed = await compressImageIfNeeded(page);
+    const mime = sanitizeMime(compressed.type||'image/jpeg');
+    const b64 = await toB64(compressed);
     if(!b64 || b64.length < 100){
       throw new Error('Page '+(pi+1)+' image data is empty — try retaking the photo');
     }
@@ -1592,8 +1594,10 @@ async function processFilesWithDelay(files, delayMs){
 
 // ─── CLAUDE API ───────────────────────────────────────────────────────────────
 async function callClaude(file){
-  const b64=await toB64(file);
-  const rawMime=file.type||'';
+  // Compress large images (iPhone photos often exceed 5MB API limit)
+  const processedFile = await compressImageIfNeeded(file);
+  const b64=await toB64(processedFile);
+  const rawMime=processedFile.type||'';
   const mime=rawMime.startsWith('image/')?sanitizeMime(rawMime):'application/pdf';
   const prompt='Return ONLY a JSON object. No text before or after. No markdown. {"vendor":"company selling TO Cee Kay (not Cee Kay itself)","date":"MM/DD/YYYY","invoice_number":"invoice number","boxes":null,"total":"$0.00","qty_shipped":null} Fill in real values from the invoice. boxes = total carton/box count as integer. total = final net amount. vendor = supplier name.';
   const systemPrompt = 'You are a JSON extraction assistant. You ONLY output valid JSON objects. Never output explanations, apologies, or any text outside the JSON object.';
@@ -1833,6 +1837,53 @@ function buildItemizedXL(data, inv){
   toast('✅ Excel ready: '+fname,'ok');
 }
 function toB64(file){return new Promise((res,rej)=>{const r=new FileReader();r.onload=()=>res(r.result.split(',')[1]);r.onerror=rej;r.readAsDataURL(file);});}
+
+// Compress image file to under 4MB before sending to API
+// iPhone photos can be 6-8MB which exceeds the 5MB API limit
+async function compressImageIfNeeded(file){
+  // Only compress images, not PDFs
+  if(!file.type.startsWith('image/') && !sanitizeMime(file.type).startsWith('image/')) return file;
+  // If under 3.5MB, no compression needed
+  if(file.size < 3.5 * 1024 * 1024) return file;
+  return new Promise((res)=>{
+    const img = new Image();
+    const url = URL.createObjectURL(file);
+    img.onload = ()=>{
+      URL.revokeObjectURL(url);
+      const canvas = document.createElement('canvas');
+      // Scale down so total pixels stay reasonable
+      let w = img.width, h = img.height;
+      const MAX = 2000; // max dimension
+      if(w > MAX || h > MAX){
+        if(w > h){ h = Math.round(h * MAX / w); w = MAX; }
+        else { w = Math.round(w * MAX / h); h = MAX; }
+      }
+      canvas.width = w; canvas.height = h;
+      const ctx = canvas.getContext('2d');
+      ctx.drawImage(img, 0, 0, w, h);
+      // Try quality 0.85 first, then 0.7 if still too big
+      let quality = 0.85;
+      let dataUrl = canvas.toDataURL('image/jpeg', quality);
+      // Check size (base64 is ~1.37x the binary size)
+      if(dataUrl.length * 0.75 > 4 * 1024 * 1024){
+        dataUrl = canvas.toDataURL('image/jpeg', 0.7);
+      }
+      if(dataUrl.length * 0.75 > 4 * 1024 * 1024){
+        dataUrl = canvas.toDataURL('image/jpeg', 0.55);
+      }
+      // Convert dataUrl back to File
+      const arr = dataUrl.split(',');
+      const bstr = atob(arr[1]);
+      const u8arr = new Uint8Array(bstr.length);
+      for(let i=0;i<bstr.length;i++) u8arr[i]=bstr.charCodeAt(i);
+      const compressed = new File([u8arr], file.name||'compressed.jpg', {type:'image/jpeg'});
+      console.log('Compressed image:', Math.round(file.size/1024)+'KB →', Math.round(compressed.size/1024)+'KB');
+      res(compressed);
+    };
+    img.onerror = ()=>{ URL.revokeObjectURL(url); res(file); }; // fallback to original
+    img.src = url;
+  });
+}
 function sleep(ms){return new Promise(r=>setTimeout(r,ms));}
 
 // ─── RECEIVED HANDLER ─────────────────────────────────────────────────────────
