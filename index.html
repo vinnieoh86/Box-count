@@ -1691,92 +1691,99 @@ async function backgroundParseItemized(inv, rec){
   }catch(e){ console.warn('Background itemized parse failed:', e.message); }
 }
 
-async function callClaudeItemized(rec, vendorName){
-  const vendorLower = (vendorName||'').toLowerCase();
-  let vendorHint = '';
-  if(vendorLower.includes('sensationnel')||vendorLower.includes('hair zone')||vendorLower.includes('outre')||vendorLower.includes('sun taiyang')){
-    vendorHint = 'FORMAT: Sensationnel/Outre. Columns: QTY SHIPPED | DESCRIPTION | COLOR-QTY | UNIT PRICE | DISC.PRICE | EXT PRICE. Colors below description as "CODE- QTY" pairs. Backordered = qty_shipped:0.';
-  } else if(vendorLower.includes('shake')||vendorLower.includes('mayde')||vendorLower.includes('bloom')){
-    vendorHint = 'FORMAT: Shake-N-Go/Mayde. Columns: QTY ORDERED | QTY SHIPPED | ITEM# | DESCRIPTION | List/Your Price | Discounted Amt. Colors on next line as "COLOR - QTY" pairs.';
-  } else if(vendorLower.includes('red beauty')||vendorLower.includes('ivy kiss')){
-    vendorHint = 'FORMAT: Red Beauty/Ivy Kiss. Columns: QTY.ORD | SHIPPED | SRP | ITEM# | DESCRIPTION | UNIT PRICE | D/C% | D/C UNIT PRICE | AMOUNT. Use D/C UNIT PRICE as your_price.';
-  } else if(vendorLower.includes('laflare')||vendorLower.includes('la flare')){
-    vendorHint = 'FORMAT: Laflare. Columns: ORD | SHIP | DESCRIPTION | UNIT | PRICE | AMOUNT. Style codes in description as #CODE : QTY.';
-  } else if(vendorLower.includes('pk international')||vendorLower.includes('pk beauty')){
-    vendorHint = 'FORMAT: PK International. Columns: LN# | ITEM NO | ITEM DESCRIPTION | UPC CODE | UM/CS | SIZE | ORDERED | SHIPPED | U/M | UNIT PRC | D% | EXT PRICE. NO STK = not shipped, qty_shipped=0. item_number = ITEM NO column. your_price = UNIT PRC. qty_ordered = ORDERED col.';
+function getVendorHint(vendorName){
+  const v = (vendorName||'').toLowerCase();
+  if(v.includes('sensationnel')||v.includes('hair zone')||v.includes('outre')||v.includes('sun taiyang'))
+    return 'Sensationnel/Outre: QTY SHIPPED | DESCRIPTION | COLOR-QTY | UNIT PRICE | DISC.PRICE | EXT PRICE. Colors below desc as CODE- QTY pairs. Backordered=qty_shipped:0.';
+  if(v.includes('shake')||v.includes('mayde')||v.includes('bloom'))
+    return 'Shake-N-Go/Mayde: QTY ORDERED | QTY SHIPPED | ITEM# | DESCRIPTION | List/Your Price | Discounted Amt. Colors on next line as COLOR - QTY pairs.';
+  if(v.includes('red beauty')||v.includes('ivy kiss'))
+    return 'Red Beauty/Ivy Kiss: QTY.ORD | SHIPPED | SRP | ITEM# | DESCRIPTION | UNIT PRICE | D/C% | D/C UNIT PRICE | AMOUNT. Use D/C UNIT PRICE as your_price.';
+  if(v.includes('laflare')||v.includes('la flare'))
+    return 'Laflare: ORD | SHIP | DESCRIPTION | UNIT | PRICE | AMOUNT. Style codes as #CODE:QTY.';
+  if(v.includes('pk international')||v.includes('pk beauty')||v.includes('bee sales'))
+    return 'Bee Sales/PK Intl: ITEM NO | Description | QTY ORDER | Backorder | Qty Shipped | UNIT PRICE | EXTENSION. n=ITEM NO, s=Qty Shipped(0 if blank or 0.00), p=UNIT PRICE, t=EXTENSION.';
+  return '';
+}
+
+function normalizeItems(items){
+  if(!items||!items.length) return [];
+  if(items[0] && items[0].n !== undefined){
+    return items.map(x=>({
+      item_number:x.n||null, description:x.d||'',
+      qty_ordered:x.o!=null?x.o:null, qty_shipped:x.s!=null?x.s:null,
+      your_price:x.p!=null?x.p:null, line_total:x.t!=null?x.t:null, colors:[]
+    }));
   }
+  return items;
+}
 
-  // For very large invoices (many pages), use a compact output format to stay under token limits
-  // Estimate invoice complexity from file size
-  const fileSizeKB = rec.b64 ? Math.round(rec.b64.length * 0.75 / 1024) : 0;
-  const isLargeInvoice = fileSizeKB > 400; // multi-page PDFs are large
-
-  const prompt = isLargeInvoice
-    ? `Extract ALL line items from this invoice. Return ONLY JSON, no markdown.
-${vendorHint}
-{"items":[{"n":"ITEM_NO","d":"DESCRIPTION","o":9,"s":9,"p":1.99,"t":17.91}]}
-Key: n=item_number, d=description, o=qty_ordered, s=qty_shipped(0 if NO STK), p=unit_price, t=ext_price
-Every line item every page. Numbers only no $ signs.`
-    : `Extract ALL line items. Return ONLY valid JSON, no markdown.
-${vendorHint}
-{"items":[{"item_number":"A10612","description":"product name","qty_ordered":9,"qty_shipped":9,"your_price":1.99,"line_total":17.91}]}
-Rules: Every item every page. qty_shipped=0 for NO STK items. Numbers only, no $ signs.`;
-
+async function callItemizedAPI(rec, prompt){
   const mime = rec.type&&rec.type.startsWith('image/') ? sanitizeMime(rec.type) : 'application/pdf';
   const contentItem = mime.startsWith('image/')
     ? {type:'image',source:{type:'base64',media_type:mime,data:rec.b64}}
     : {type:'document',source:{type:'base64',media_type:'application/pdf',data:rec.b64}};
-
-  // Use up to 16000 tokens for large multi-page invoices
   const r = await fetch('https://api.anthropic.com/v1/messages',{
     method:'POST',
     headers:{'Content-Type':'application/json','x-api-key':getKey(),
       'anthropic-version':'2023-06-01','anthropic-dangerous-direct-browser-access':'true'},
     body:JSON.stringify({model:'claude-sonnet-4-20250514',max_tokens:16000,
-      system:'You are a JSON extraction assistant. Output ONLY valid JSON. Never truncate the items array — include every single line item.',
+      system:'JSON extraction only. Output ONLY valid JSON. Never truncate the items array.',
       messages:[{role:'user',content:[contentItem,{type:'text',text:prompt}]}]})
   });
-
-  if(!r.ok){
-    const eb = await r.json().catch(()=>({}));
-    throw new Error(eb.error?.message||'API error '+r.status);
-  }
+  if(!r.ok){ const eb=await r.json().catch(()=>({})); throw new Error(eb.error?.message||'API '+r.status); }
   const d = await r.json();
-  const textBlock = d.content.find(b=>b.type==='text');
-  if(!textBlock) throw new Error('No API response');
-  // Handle potentially truncated JSON gracefully
-  let raw = textBlock.text.trim().replace(/^```json\s*/,'').replace(/```\s*$/,'').trim();
+  const tb = d.content.find(b=>b.type==='text');
+  if(!tb) throw new Error('No API response');
+  let raw = tb.text.trim().replace(/^```json\s*/,'').replace(/```\s*$/,'').trim();
   const match = raw.match(/\{[\s\S]*/);
-  if(!match) throw new Error('No JSON in response');
-  let jsonStr = match[0];
-  // If truncated (missing closing braces), attempt repair
-  if(!jsonStr.endsWith('}')){
-    // Close any open array and object
-    const openBrackets = (jsonStr.match(/\[/g)||[]).length - (jsonStr.match(/\]/g)||[]).length;
-    const openBraces   = (jsonStr.match(/\{/g)||[]).length - (jsonStr.match(/\}/g)||[]).length;
-    // Remove trailing incomplete item
-    jsonStr = jsonStr.replace(/,\s*\{[^}]*$/, '');
-    for(let i=0;i<openBrackets;i++) jsonStr += ']';
-    for(let i=0;i<openBraces;i++)   jsonStr += '}';
+  if(!match) throw new Error('No JSON in response: '+raw.substring(0,80));
+  let js = match[0];
+  if(!js.trim().endsWith('}')){
+    js = js.replace(/,\s*\{[^}]*$/, '');
+    const ob=(js.match(/\[/g)||[]).length-(js.match(/\]/g)||[]).length;
+    const oc=(js.match(/\{/g)||[]).length-(js.match(/\}/g)||[]).length;
+    for(let i=0;i<ob;i++) js+=']';
+    for(let i=0;i<oc;i++) js+='}';
   }
-  let result;
-  try{ result = JSON.parse(jsonStr); }
-  catch(e){ throw new Error('JSON parse failed — invoice may be too large for single parse'); }
+  return JSON.parse(js);
+}
 
-  // Normalize compact format (n/d/o/s/p/t) to standard format
-  if(result.items && result.items.length && result.items[0].n !== undefined){
-    result.items = result.items.map(x=>({
-      item_number: x.n||null,
-      description: x.d||'',
-      qty_ordered:  x.o!=null?x.o:null,
-      qty_shipped:  x.s!=null?x.s:null,
-      your_price:   x.p!=null?x.p:null,
-      line_total:   x.t!=null?x.t:null,
-      colors: []
-    }));
+async function callClaudeItemized(rec, vendorName){
+  const vendorHint = getVendorHint(vendorName);
+  const fileSizeKB = rec.b64 ? Math.round(rec.b64.length * 0.75 / 1024) : 0;
+  const basePrompt = `Extract ALL line items. Return ONLY JSON, no markdown.
+${vendorHint}
+{"items":[{"n":"ITEM_NO","d":"DESCRIPTION","o":9,"s":9,"p":1.99,"t":17.91}]}
+n=item_number d=description o=qty_ordered s=qty_shipped(0 if NO STK/blank/backorder) p=unit_price t=ext_price
+Every item. Numbers only no $ signs.`;
+
+  if(fileSizeKB > 600){
+    // Large invoice — parse in two chunks to avoid rate limits
+    const p1 = basePrompt + ' Extract items from pages 1-10 ONLY.';
+    const p2 = basePrompt + ' Extract items from pages 11-25 ONLY (skip if fewer pages exist).';
+    toast('📊 Large invoice — parsing pages 1-10…','ok');
+    let items1 = [], items2 = [];
+    try{ const r1 = await callItemizedAPI(rec, p1); items1 = normalizeItems(r1.items||[]); }
+    catch(e){ console.warn('Chunk 1 failed:', e.message); }
+    await sleep(12000); // wait for rate limit window
+    toast('📊 Parsing pages 11-25…','ok');
+    try{ const r2 = await callItemizedAPI(rec, p2); items2 = normalizeItems(r2.items||[]); }
+    catch(e){ console.warn('Chunk 2 failed:', e.message); }
+    // Deduplicate
+    const seen = new Set();
+    const all = [...items1,...items2].filter(x=>{
+      const k=(x.item_number||'')+'|'+(x.description||'').substring(0,20);
+      if(seen.has(k)) return false; seen.add(k); return true;
+    });
+    return {items: all};
   }
+
+  const result = await callItemizedAPI(rec, basePrompt);
+  result.items = normalizeItems(result.items||[]);
   return result;
 }
+
 
 async function exportItemizedExcel(invoiceId){
   const inv = invoices.find(x=>String(x.id)===String(invoiceId));
@@ -1933,8 +1940,15 @@ async function compressImageIfNeeded(file){
     };
     img.onerror = (e)=>{
       URL.revokeObjectURL(url);
-      console.warn('Image load failed, using original:', e);
-      res(file); // fallback — send as-is and hope for the best
+      console.warn('Image load failed, sending original file');
+      // Fallback: send original but ensure mime is valid
+      const safeMime = sanitizeMime(file.type||'');
+      if(safeMime === file.type){
+        res(file);
+      } else {
+        const renamed = new File([file], file.name||'photo.jpg', {type:safeMime});
+        res(renamed);
+      }
     };
     img.src = url;
   });
@@ -3035,6 +3049,31 @@ if(!pinUsers || !pinUsers.length){
 let currentUser = null;
 let pinBuffer = '';
 
+// Restore session from sessionStorage (survives refresh, not tab close)
+function restoreSession(){
+  try{
+    const saved = sessionStorage.getItem('ck_session');
+    if(!saved) return false;
+    const sess = JSON.parse(saved);
+    // Verify the user still exists in pinUsers with same role
+    const match = pinUsers.find(u=>u.name===sess.name && u.pin===sess.pin);
+    if(!match) return false;
+    currentUser = match;
+    document.getElementById('pinOverlay').classList.add('hidden');
+    applyRoleRestrictions(currentUser.role);
+    document.getElementById('adminBtnLabel').textContent = currentUser.name;
+    document.getElementById('currentUserLabel').textContent = currentUser.name + ' — ' + ROLE_LABELS[currentUser.role];
+    document.getElementById('adminBtn').style.display = '';
+    const lb = document.getElementById('lockBtn');
+    if(lb) lb.style.display = '';
+    setupIdleTimer();
+    renderTbl(); updateStats();
+    startAutoSync();
+    setTimeout(queueUncachedInvoices, 5000);
+    return true;
+  }catch(e){ return false; }
+}
+
 function savePinUsers(){
   localStorage.setItem('ck_pin_users', JSON.stringify(pinUsers));
   // Also save to Supabase so all devices stay in sync
@@ -3132,13 +3171,12 @@ function checkPin(){
     const lb = document.getElementById('lockBtn');
     if(lb) lb.style.display = '';
     setupIdleTimer();
+    // Save session so refresh doesn't require re-login
+    sessionStorage.setItem('ck_session', JSON.stringify({name:currentUser.name, pin:currentUser.pin}));
     toast('Welcome, ' + currentUser.name + '!', 'ok');
     pinBuffer = ''; updatePinDots();
-    // Render invoices immediately after login
     renderTbl(); updateStats();
-    // Start auto-sync with team (runs every 20s, active tab only, no logout)
     startAutoSync();
-    // Start background itemized parse after login
     setTimeout(queueUncachedInvoices, 5000);
   } else {
     document.getElementById('pinError').textContent = 'Incorrect PIN — try again';
@@ -3182,6 +3220,7 @@ function applyRoleRestrictions(role){
 
 function pinLogout(){
   clearTimeout(_idleTimer);
+  sessionStorage.removeItem('ck_session'); // clear so re-login required
   currentUser = null;
   pinBuffer = '';
   closeM('adminMod');
@@ -3486,14 +3525,15 @@ async function queueUncachedInvoices(){
 // ─── INIT ─────────────────────────────────────────────────────────────────────
 updateKeyUI();
 (async()=>{
-  // Load pinUsers from Supabase FIRST — before showing PIN screen
-  // This ensures users created on any device are available everywhere
   await loadPinUsersFromSupabase();
   buildUserSelect && buildUserSelect();
 
   const ok = await sbLoadAll();
   if(!invoices.length) invoices=JSON.parse(localStorage.getItem('ck_inv')||'[]');
   if(!archived.length) archived=JSON.parse(localStorage.getItem('ck_archived')||'[]');
+
+  // Try to restore previous session — if successful, skip PIN screen
+  if(restoreSession()) return; // already logged in, session restored
   renderTbl(); updateStats();
   checkAutoArchive(); setInterval(checkAutoArchive,3600000);
   if(ok) toast('✓ Connected to team database','ok');
