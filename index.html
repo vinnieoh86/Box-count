@@ -1251,12 +1251,20 @@ async function processMultiPageCamera(pages, ts){
   setTimeout(()=>{pw.classList.remove('show');bar.style.width='0%';lst.innerHTML='';newIds.clear();},7000);
 }
 
+// Sanitize image mime type — API only accepts jpeg/png/gif/webp
+function sanitizeMime(type){
+  if(!type || type==='' || type==='image/heic' || type==='image/heif') return 'image/jpeg';
+  if(type==='image/jpg') return 'image/jpeg';
+  const allowed = ['image/jpeg','image/png','image/gif','image/webp'];
+  return allowed.includes(type) ? type : 'image/jpeg';
+}
+
 async function callClaudeMultiImage(pages){
   const prompt='Extract invoice summary data and return ONLY a JSON object (no markdown, no explanation).\nFormat: {"vendor":"seller/supplier name (never Cee Kay)","date":"MM/DD/YYYY","invoice_number":"exact invoice number","boxes":"total carton/box count as integer or null","total":"final net total e.g. $1,234.56","qty_shipped":"total quantity of individual items/pieces shipped as integer or null"}\nThis is a multi-page invoice — all pages shown. Total and qty are usually on the last page. vendor = company selling TO Cee Kay.';
   const content = [];
   for(const page of pages){
     const b64 = await toB64(page);
-    const mime = page.type.startsWith('image/') ? page.type : 'image/jpeg';
+    const mime = sanitizeMime(page.type);
     content.push({type:'image',source:{type:'base64',media_type:mime,data:b64}});
   }
   content.push({type:'text',text:prompt});
@@ -1266,14 +1274,23 @@ async function callClaudeMultiImage(pages){
       'anthropic-version':'2023-06-01','anthropic-dangerous-direct-browser-access':'true'},
     body:JSON.stringify({model:'claude-sonnet-4-20250514',max_tokens:800,messages:[{role:'user',content}]})
   });
-  if(!r.ok){const eb=await r.json().catch(()=>({error:{message:'HTTP '+r.status}}));throw new Error(eb.error?.message||'API error');}
+  if(!r.ok){
+    const eb=await r.json().catch(()=>({error:{message:'HTTP '+r.status}}));
+    throw new Error(eb.error?.message||'API error '+r.status);
+  }
   const d = await r.json();
+  if(!d.content||!d.content.length) throw new Error('Empty API response');
   const textBlock = d.content.find(b=>b.type==='text');
-  if(!textBlock) throw new Error('No response from API');
-  const clean = textBlock.text.trim().replace(/^```json\s*/,'').replace(/```\s*$/,'').trim();
+  if(!textBlock||!textBlock.text) throw new Error('No text in API response');
+  const raw = textBlock.text.trim();
+  const clean = raw.replace(/^```json\s*/,'').replace(/^```\s*/,'').replace(/```\s*$/,'').trim();
   const match = clean.match(/\{[\s\S]*\}/);
-  if(!match) throw new Error('No JSON in response');
-  return JSON.parse(match[0]);
+  if(!match) throw new Error('No JSON found in response: '+clean.substring(0,100));
+  let parsed;
+  try{ parsed = JSON.parse(match[0]); }
+  catch(pe){ throw new Error('JSON parse failed: '+pe.message+' | raw: '+clean.substring(0,100)); }
+  if(!parsed.vendor&&!parsed.invoice_number) throw new Error('Could not extract invoice data from photo');
+  return parsed;
 }
 
 // ─── SUPABASE STORAGE (cloud — works on all devices) ─────────────────────────
@@ -1563,7 +1580,8 @@ async function processFilesWithDelay(files, delayMs){
 // ─── CLAUDE API ───────────────────────────────────────────────────────────────
 async function callClaude(file){
   const b64=await toB64(file);
-  const mime=file.type.startsWith('image/')?file.type:'application/pdf';
+  const rawMime=file.type||'';
+  const mime=rawMime.startsWith('image/')?sanitizeMime(rawMime):'application/pdf';
   const prompt='Extract invoice summary data and return ONLY a JSON object (no markdown, no explanation).\nFormat: {"vendor":"seller/supplier name (never Cee Kay)","date":"MM/DD/YYYY","invoice_number":"exact invoice number","boxes":"total carton/box count as integer or null","total":"final net total e.g. $1,234.56","qty_shipped":"total quantity of individual items/pieces shipped as integer — look for Total Qty, Total Qty (pcs), Total Pieces, or sum QTY SHIPPED column. null if not determinable"}\nFor multi-page invoices the total and qty are on the last page. vendor = the company selling TO Cee Kay.';
   let lastErr='';
   for(let attempt=1;attempt<=2;attempt++){
@@ -1674,7 +1692,7 @@ ${vendorHint}
 
 Rules: Include ALL items even qty_shipped=0. Numbers only no $ signs. Every page every item.`;
 
-  const mime = rec.type&&rec.type.startsWith('image/') ? rec.type : 'application/pdf';
+  const mime = rec.type&&rec.type.startsWith('image/') ? sanitizeMime(rec.type) : 'application/pdf';
   const contentItem = mime.startsWith('image/')
     ? {type:'image',source:{type:'base64',media_type:mime,data:rec.b64}}
     : {type:'document',source:{type:'base64',media_type:'application/pdf',data:rec.b64}};
