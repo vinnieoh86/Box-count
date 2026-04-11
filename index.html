@@ -2,7 +2,14 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Cee Kay">
+<meta name="theme-color" content="#1e3a5f">
+<link rel="manifest" href="manifest.json">
+<link rel="apple-touch-icon" href="icon-192.png">
 <title>Cee Kay — Invoice Tracker</title>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&family=Fraunces:ital,wght@0,600;0,700;1,400&display=swap" rel="stylesheet">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
@@ -472,15 +479,9 @@ tbody tr:hover .delbtn,tbody tr:hover .editbtn{opacity:1;}
         <button class="btn-outline" onclick="openM('clearMod')">Clear All</button>
       </div>
     </div>
-    <div id="pdfToolbar" style="display:none;align-items:center;gap:12px;padding:10px 16px;background:var(--blue);color:#fff;border-radius:8px;margin:0 0 12px 0;font-size:13px">
-      <span id="pdfSelCount" style="font-weight:600">0 selected</span>
-      <button onclick="exportSelectedPDFs()" style="background:#fff;color:var(--blue);border:none;padding:6px 16px;border-radius:6px;font-size:12px;font-weight:700;cursor:pointer">⬇ Download PDFs</button>
-      <button onclick="clearPdfSelection()" style="background:rgba(255,255,255,.2);color:#fff;border:none;padding:6px 12px;border-radius:6px;font-size:12px;cursor:pointer">✕ Clear</button>
-    </div>
     <div class="tw">
       <table id="mainTbl">
         <thead><tr>
-          <th style="width:28px;text-align:center"><input type="checkbox" id="chkAll" onclick="toggleAllPdf(this)" style="width:15px;height:15px;cursor:pointer" title="Select all"></th>
           <th>Vendor</th>
           <th>Date</th>
           <th>Invoice #</th>
@@ -715,7 +716,9 @@ async function sbLoadAll(){
         id:r.id, vendor:r.vendor, date:r.date,
         invoice_number:r.invoice_number, filename:r.filename,
         fileUrl:r.file_url||'',
-        boxes:r.boxes, total:r.total, qty_shipped:r.qty_shipped,
+        boxes:r.boxes,
+        total: r.total!=null ? '$'+parseFloat(r.total).toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2}) : '',
+        qty_shipped:r.qty_shipped,
         addedAt:r.added_at,
         rcv1:r.rcv1||'', rcv1ts:r.rcv1ts||'',
         rcv2:r.rcv2||'', rcv2ts:r.rcv2ts||'',
@@ -736,6 +739,8 @@ async function sbLoadAll(){
       aliases = [...al.map(a=>({from:a.from,to:a.to})), ...missing];
     }
     console.log('✓ Supabase loaded:', invoices.length, 'invoices');
+    // Keep localStorage aliases in sync with Supabase
+    if(aliases.length) localStorage.setItem('ck_aliases', JSON.stringify(aliases));
     // Update sync indicator
     const dot = document.getElementById('syncDot');
     const txt = document.getElementById('syncTxt');
@@ -787,7 +792,10 @@ function applyAlias(name){
   // Sort by length descending so more specific rules match first
   const sorted=[...aliases].sort((a,b)=>b.from.length-a.from.length);
   for(const a of sorted){
-    if(lower.includes(a.from.toLowerCase().trim())) return a.to;
+    const fromLower = a.from.toLowerCase().trim();
+    if(!fromLower) continue;
+    // Match if vendor name contains alias key OR alias key contains vendor name
+    if(lower.includes(fromLower) || fromLower.includes(lower)) return a.to;
   }
   return name;
 }
@@ -1526,7 +1534,6 @@ function renderTbl(){
       ? `<a href="${x.fileUrl}" target="_blank" rel="noopener" style="color:var(--blue);font-weight:500;text-decoration:none" title="Open PDF">${esc(x.invoice_number||'—')} 🔗</a>`
       : `<span style="color:var(--blue);font-weight:500">${esc(x.invoice_number||'—')}</span>`;
     html+=`<tr data-id="${x.id}" class="${isComp?'comp-row':''}">
-      <td style="width:28px;text-align:center;padding:6px 4px"><input type="checkbox" class="pdf-chk" data-id="${x.id}" data-url="${x.fileUrl||''}" data-name="${esc((x.filename||x.invoice_number||String(x.id)).replace(/"/g,''))}" style="width:15px;height:15px;cursor:pointer"></td>
       <td style="font-weight:600;color:var(--navy)">${esc(x.vendor||'—')}${newIds.has(x.id)?'<span class="new-tag">new</span>':''}</td>
       <td style="color:var(--text2);font-size:12px">${esc(x.date||'—')}</td>
       <td>${invLink}</td>
@@ -1567,71 +1574,6 @@ function doSort(col){
   renderTbl();
 }
 function filterTbl(){searchQ=document.getElementById('si').value;renderTbl();}
-
-// ─── PDF EXPORT ───────────────────────────────────────────────────────────────
-function toggleAllPdf(chk){
-  document.querySelectorAll('.pdf-chk').forEach(c=>c.checked=chk.checked);
-  updatePdfToolbar();
-}
-
-function updatePdfToolbar(){
-  const checked = document.querySelectorAll('.pdf-chk:checked');
-  const toolbar = document.getElementById('pdfToolbar');
-  const countEl = document.getElementById('pdfSelCount');
-  if(checked.length > 0){
-    toolbar.style.display='flex';
-    countEl.textContent = checked.length + ' selected';
-  } else {
-    toolbar.style.display='none';
-  }
-  // Update select-all state
-  const all = document.querySelectorAll('.pdf-chk');
-  const chkAll = document.getElementById('chkAll');
-  if(chkAll) chkAll.checked = all.length > 0 && checked.length === all.length;
-}
-
-// Wire up checkbox change — use event delegation
-document.getElementById('mainTbl').addEventListener('change', e=>{
-  if(e.target.classList.contains('pdf-chk')) updatePdfToolbar();
-});
-
-function clearPdfSelection(){
-  document.querySelectorAll('.pdf-chk').forEach(c=>c.checked=false);
-  const chkAll = document.getElementById('chkAll');
-  if(chkAll) chkAll.checked = false;
-  updatePdfToolbar();
-}
-
-async function exportSelectedPDFs(){
-  const checked = Array.from(document.querySelectorAll('.pdf-chk:checked'));
-  const withUrl = checked.filter(c=>c.dataset.url);
-  const noUrl   = checked.filter(c=>!c.dataset.url);
-
-  if(!withUrl.length){
-    toast('⚠️ No PDFs available — invoices must be uploaded to storage first','wrn');
-    return;
-  }
-  if(noUrl.length){
-    toast(`ℹ️ ${noUrl.length} invoice${noUrl.length!==1?'s':''} skipped — no PDF stored yet`,'wrn');
-  }
-
-  toast(`⬇ Downloading ${withUrl.length} PDF${withUrl.length!==1?'s':''}…`,'ok');
-
-  // Open each PDF in a new tab (browser will download or preview)
-  // Small delay between each so browser doesn't block pop-ups
-  for(let i=0; i<withUrl.length; i++){
-    const c = withUrl[i];
-    const a = document.createElement('a');
-    a.href = c.dataset.url;
-    a.target = '_blank';
-    a.download = c.dataset.name || 'invoice.pdf';
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    if(i < withUrl.length-1) await sleep(400);
-  }
-  clearPdfSelection();
-}
 
 // ─── EDIT ─────────────────────────────────────────────────────────────────────
 function openEdit(id){
@@ -1835,10 +1777,12 @@ function renderWeekly(){
       else if(st==='partial') badge='<span class="badge badge-amber">Partial</span>';
       else if(b>0) badge='<span class="badge badge-gray">Pending</span>';
       const wRowCls=st==='complete'?'wcomp':st==='overage'?'wover':'';
+      const wkKey2 = key.replace(/[^a-zA-Z0-9]/g,'_');
       return `<tr class="${wRowCls}">
+        <td style="width:28px;text-align:center;padding:4px"><input type="checkbox" class="wpdf-chk" data-wk="${wkKey2}" data-url="${x.fileUrl||''}" data-name="${(x.filename||x.invoice_number||String(x.id)).replace(/"/g,'')}" style="width:15px;height:15px;cursor:pointer" ${!x.fileUrl?'title="No PDF stored" style="opacity:.4;width:15px;height:15px"':''}></td>
         <td class="wv">${esc(x.vendor||'—')}</td>
         <td class="wd">${esc(x.date||'—')}</td>
-        <td class="wi">${x.fileData?`<span style="color:var(--blue);cursor:pointer;text-decoration:underline;text-underline-offset:2px" onclick="openInvoiceFile('${x.id}')" title="View ${esc(x.filename||'file')}">${esc(x.invoice_number||'—')}</span>`:esc(x.invoice_number||'—')}</td>
+        <td class="wi">${x.fileUrl?`<a href="${x.fileUrl}" target="_blank" rel="noopener" style="color:var(--blue);font-weight:500;text-decoration:none">${esc(x.invoice_number||'—')} 🔗</a>`:esc(x.invoice_number||'—')}</td>
         <td style="text-align:center;font-weight:600">${b||'—'}</td>
         <td style="text-align:center">${rcvInp('rcv1')}</td>
         <td style="text-align:center">${rcvInp('rcv2')}</td>
@@ -1853,6 +1797,7 @@ function renderWeekly(){
 
     const allComplete=wDone===wInvs.length&&wInvs.length>0;
     const hdrStyle=allComplete?'background:linear-gradient(135deg,#15803d,#166534);':'';
+    const wkSafeKey = key.replace(/[^a-zA-Z0-9]/g,'_');
     return `<div class="week-sec">
       <div class="week-hdr" data-wkkey="${key}" style="${hdrStyle}">
         <div class="week-label">${allComplete?'✅':'📅'} ${allComplete?fmtWkLabel(wk.start,wk.end)+' — ALL COMPLETE':fmtWkLabel(wk.start,wk.end)}</div>
@@ -1862,11 +1807,13 @@ function renderWeekly(){
           <div class="week-pill boxes">📬 <strong>${wRcvd}</strong> received</div>
           <div class="week-pill done">✓ <strong>${wDone}</strong> complete</div>
           <div class="week-pill money">💰 <strong>$${wTotal.toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2})}</strong></div>
+          <button onclick="exportWeekPDFs('${wkSafeKey}')" style="background:rgba(255,255,255,.2);color:#fff;border:1px solid rgba(255,255,255,.4);padding:3px 12px;border-radius:5px;font-size:11px;font-weight:600;cursor:pointer;margin-left:4px">⬇ PDFs</button>
         </div>
       </div>
       <div class="week-body">
         <table class="week-tbl">
           <thead><tr>
+            <th style="width:28px"></th>
             <th>Vendor</th><th>Date</th><th>Invoice #</th>
             <th style="text-align:center">Boxes</th>
             <th style="text-align:center">Rcv Day 1</th>
@@ -1881,6 +1828,33 @@ function renderWeekly(){
       </div>
     </div>`;
   }).join('');
+}
+
+// ─── PDF WEEK EXPORT ─────────────────────────────────────────────────────────
+async function exportWeekPDFs(wkKey){
+  // Get all checked boxes for this week, or if none checked, grab all with URLs
+  const allChk = Array.from(document.querySelectorAll(`.wpdf-chk[data-wk="${wkKey}"]`));
+  const checked = allChk.filter(c=>c.checked);
+  const targets = checked.length ? checked : allChk.filter(c=>c.dataset.url);
+
+  if(!targets.length){
+    toast('⚠️ No PDFs available for this week — upload invoices as PDFs first','wrn');
+    return;
+  }
+
+  toast(`⬇ Downloading ${targets.length} PDF${targets.length!==1?'s':''}…`,'ok');
+  for(let i=0;i<targets.length;i++){
+    const t = targets[i];
+    if(!t.dataset.url) continue;
+    const a = document.createElement('a');
+    a.href = t.dataset.url;
+    a.target = '_blank';
+    a.download = t.dataset.name || 'invoice.pdf';
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    if(i < targets.length-1) await sleep(400);
+  }
 }
 
 // ─── EXPORT ───────────────────────────────────────────────────────────────────
@@ -2256,6 +2230,11 @@ updateKeyUI();
   }, 30000);
 })();
 if(!getKey()) setTimeout(()=>openM('apiMod'),500);
+
+// ─── PWA SERVICE WORKER ───────────────────────────────────────────────────────
+if('serviceWorker' in navigator){
+  navigator.serviceWorker.register('sw.js').catch(()=>{});
+}
 </script>
 </body>
 </html>
