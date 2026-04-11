@@ -1152,9 +1152,11 @@ async function getFileLocal(id){
   } catch(e){ return null; }
 }
 
-async function openLocalFile(id, filename){
-  const record = await getFileLocal(id);
-  if(!record){ toast('File not found on this device — re-upload the invoice','wrn'); return; }
+async function openLocalFile(idOrUrl, filename){
+  // Accept either 'local:safeId' or raw safeId
+  const key = String(idOrUrl).replace('local:','').replace(/\./g,'_');
+  const record = await getFileLocal(key);
+  if(!record){ toast('⚠️ PDF not on this device — must be opened on the laptop that uploaded it','wrn'); return; }
   const blob = b64ToBlob(record.b64, record.type||'application/pdf');
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
@@ -1584,9 +1586,8 @@ function renderTbl(){
     else if(st==='overage') badge='<span class="badge badge-red">⚠ Overage</span>';
     else if(st==='partial') badge='<span class="badge badge-amber">Partial</span>';
     else                    badge='<span class="badge badge-gray">Pending</span>';
-    const safeInvId = String(x.id).replace(/\./g,'_');
     const invLink = x.fileUrl
-      ? `<span style="color:var(--blue);font-weight:500;text-decoration:underline;cursor:pointer" onclick="openLocalFile('${safeInvId}','${esc((x.filename||x.invoice_number||'invoice').replace(/'/g,''))}')" title="Download PDF">${esc(x.invoice_number||'—')} 📎</span>`
+      ? `<span style="color:var(--blue);font-weight:500;text-decoration:underline;cursor:pointer" onclick="openLocalFile('${x.fileUrl}','${esc((x.filename||x.invoice_number||'invoice').replace(/'/g,''))}')" title="Click to download PDF">${esc(x.invoice_number||'—')} 📎</span>`
       : `<span style="color:var(--blue);font-weight:500">${esc(x.invoice_number||'—')}</span>`;
     html+=`<tr data-id="${x.id}" class="${isComp?'comp-row':''}">
       <td style="font-weight:600;color:var(--navy)">${esc(x.vendor||'—')}${newIds.has(x.id)?'<span class="new-tag">new</span>':''}</td>
@@ -1754,8 +1755,8 @@ function renderVendorAcc(vmap,vcnt,data){
       else if(st==='partial') badge='<span class="badge badge-amber">Partial</span>';
       else if(boxes>0)        badge='<span class="badge badge-gray">Pending</span>';
       const remDisplay=rem===null?'—':st==='complete'?'<span class="badge badge-green">✓</span>':st==='overage'?'<span class="badge badge-red">+'+Math.abs(rem)+'</span>':rem;
-      const invLink=x.fileData
-        ?`<span style="color:var(--blue);cursor:pointer;text-decoration:underline;text-underline-offset:2px" onclick="openInvoiceFile('${x.id}')" title="View ${esc(x.filename||'file')}">${esc(x.invoice_number||'—')} 📎</span>`
+      const invLink=x.fileUrl
+        ?`<span style="color:var(--blue);font-weight:500;text-decoration:underline;cursor:pointer" onclick="openLocalFile('${x.fileUrl}','${(x.filename||x.invoice_number||'invoice').replace(/'/g,'')}')" title="Click to download PDF">${esc(x.invoice_number||'—')} 📎</span>`
         :esc(x.invoice_number||'—');
       return `<tr class="${st==='complete'?'comp-row':''}" data-vacc-id="${safeId(x.id)}">
         <td class="vd">${esc(x.date||'—')}</td>
@@ -1837,7 +1838,7 @@ function renderWeekly(){
         <td style="width:28px;text-align:center;padding:4px"><input type="checkbox" class="wpdf-chk" data-wk="${wkKey2}" data-url="${x.fileUrl||''}" data-id="${String(x.id).replace(/\./g,'_')}" data-name="${(x.filename||x.invoice_number||String(x.id)).replace(/"/g,'')}" style="width:15px;height:15px;cursor:pointer" ${!x.fileUrl?'title="No PDF on this device"':''}></td>
         <td class="wv">${esc(x.vendor||'—')}</td>
         <td class="wd">${esc(x.date||'—')}</td>
-        <td class="wi">${x.fileUrl?`<span style="color:var(--blue);font-weight:500;text-decoration:underline;cursor:pointer" onclick="openLocalFile('${String(x.id).replace(/\./g,'_')}','${(x.filename||x.invoice_number||'invoice').replace(/'/g,'')}')" title="Download PDF">${esc(x.invoice_number||'—')} 📎</span>`:esc(x.invoice_number||'—')}</td>
+        <td class="wi">${x.fileUrl?`<span style="color:var(--blue);font-weight:500;text-decoration:underline;cursor:pointer" onclick="openLocalFile('${x.fileUrl}','${(x.filename||x.invoice_number||'invoice').replace(/'/g,'')}')" title="Click to download PDF">${esc(x.invoice_number||'—')} 📎</span>`:esc(x.invoice_number||'—')}</td>
         <td style="text-align:center;font-weight:600">${b||'—'}</td>
         <td style="text-align:center">${rcvInp('rcv1')}</td>
         <td style="text-align:center">${rcvInp('rcv2')}</td>
@@ -1901,7 +1902,7 @@ async function exportWeekPDFs(wkKey){
   for(let i=0;i<targets.length;i++){
     const t = targets[i];
     if(!t.dataset.url) continue;
-    const invoiceId = t.dataset.id || t.dataset.url.replace('local:','');
+    const invoiceId = t.dataset.url.replace('local:','');
     const record = await getFileLocal(invoiceId);
     if(!record){ continue; }
     const blob = b64ToBlob(record.b64, record.type||'application/pdf');
@@ -2051,10 +2052,12 @@ function renderEmpWeekly(){
       else if(st==='partial') badge='<span class="badge badge-amber">Partial</span>';
       else if(boxes>0)        badge='<span class="badge badge-gray">Pending</span>';
       const remD=rem===null?'—':st==='complete'?'<span class="badge badge-green">✓</span>':st==='overage'?'<span class="badge badge-red">+'+Math.abs(rem)+'</span>':rem;
+      const empWkKey = key.replace(/[^a-zA-Z0-9]/g,'_');
       return `<tr class="${st==='complete'?'wcomp':st==='overage'?'wover':''}">
+        <td style="width:28px;text-align:center;padding:4px"><input type="checkbox" class="wpdf-chk" data-wk="emp_${empWkKey}" data-url="${x.fileUrl||''}" data-name="${(x.filename||x.invoice_number||String(x.id)).replace(/"/g,'')}" style="width:15px;height:15px;cursor:pointer" ${!x.fileUrl?'title="No PDF on this device"':''}></td>
         <td class="wv">${esc(x.vendor||'—')}</td>
         <td class="wd">${esc(x.date||'—')}</td>
-        <td class="wi">${x.fileData?`<span style="color:var(--blue);cursor:pointer;text-decoration:underline;text-underline-offset:2px" onclick="openInvoiceFile('${x.id}')" title="View ${esc(x.filename||'file')}">${esc(x.invoice_number||'—')}</span>`:esc(x.invoice_number||'—')}</td>
+        <td class="wi">${x.fileUrl?`<span style="color:var(--blue);font-weight:500;text-decoration:underline;cursor:pointer" onclick="openLocalFile('${x.fileUrl}','${(x.filename||x.invoice_number||'invoice').replace(/'/g,'')}')" title="Click to download PDF">${esc(x.invoice_number||'—')} 📎</span>`:esc(x.invoice_number||'—')}</td>
         <td style="text-align:center;font-weight:600">${boxes||'—'}</td>
         <td style="text-align:center">${rcvInp('rcv1')}</td>
         <td style="text-align:center">${rcvInp('rcv2')}</td>
@@ -2077,11 +2080,13 @@ function renderEmpWeekly(){
           <div class="week-pill done">✓ <strong>${wDone}</strong> complete</div>
           ${wPending?`<div class="week-pill"><strong style="color:#fcd34d">${wPending}</strong> pending</div>`:''}
           ${wPartial?`<div class="week-pill"><strong style="color:#fcd34d">${wPartial}</strong> partial</div>`:''}
+          <button onclick="exportWeekPDFs('emp_${key.replace(/[^a-zA-Z0-9]/g,'_')}')" style="background:rgba(255,255,255,.2);color:#fff;border:1px solid rgba(255,255,255,.4);padding:3px 12px;border-radius:5px;font-size:11px;font-weight:600;cursor:pointer;margin-left:4px">⬇ DL</button>
         </div>
       </div>
       <div class="week-body">
         <table class="week-tbl">
           <thead><tr>
+            <th style="width:28px"></th>
             <th>Vendor</th><th>Date</th><th>Invoice #</th>
             <th style="text-align:center">Boxes</th>
             <th style="text-align:center">Rcv Day 1</th>
