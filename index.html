@@ -1067,7 +1067,7 @@ async function processMultiPageCamera(pages, ts){
       const filename = `CAM_${ts}_${pages.length}pg.jpg`;
       const id = Date.now()+Math.random();
       // Upload first page as representative image to Supabase Storage
-      const fileUrl = await uploadToStorage(pages[0], String(id).replace(/\./g,'_')+'_cam.jpg');
+      const fileUrl = await uploadToStorage(pages[0], String(id).replace(/\./g,'_'));
       invoices.push({...res, id, addedAt:new Date().toISOString(), filename,
         fileUrl: fileUrl||'',
         qty_shipped:res.qty_shipped||'',
@@ -1111,17 +1111,71 @@ async function callClaudeMultiImage(pages){
   return JSON.parse(match[0]);
 }
 
-// ─── SUPABASE STORAGE ─────────────────────────────────────────────────────────
-async function uploadToStorage(file, filename){
+// ─── LOCAL FILE STORAGE (IndexedDB) ──────────────────────────────────────────
+// Files are stored locally on each device — no cloud upload needed
+const DB_NAME = 'ceekay_files';
+const DB_STORE = 'pdfs';
+let _db = null;
+
+function openDB(){
+  if(_db) return Promise.resolve(_db);
+  return new Promise((res,rej)=>{
+    const req = indexedDB.open(DB_NAME, 1);
+    req.onupgradeneeded = e => e.target.result.createObjectStore(DB_STORE);
+    req.onsuccess = e => { _db = e.target.result; res(_db); };
+    req.onerror = () => rej(req.error);
+  });
+}
+
+async function saveFileLocal(id, file){
   try{
-    const {data, error} = await supa.storage.from('invoices').upload(filename, file, {
-      upsert: true,
-      contentType: file.type || 'application/octet-stream'
+    const db = await openDB();
+    const b64 = await toB64(file);
+    const record = { b64, type: file.type, name: file.name };
+    return new Promise((res,rej)=>{
+      const tx = db.transaction(DB_STORE,'readwrite');
+      tx.objectStore(DB_STORE).put(record, id);
+      tx.oncomplete = () => res('local:'+id);
+      tx.onerror = () => rej(tx.error);
     });
-    if(error){ console.warn('Storage upload error:', error.message); return ''; }
-    const {data:{publicUrl}} = supa.storage.from('invoices').getPublicUrl(filename);
-    return publicUrl;
-  } catch(e){ console.warn('Storage error:', e.message); return ''; }
+  } catch(e){ console.warn('IndexedDB save error:', e.message); return ''; }
+}
+
+async function getFileLocal(id){
+  try{
+    const db = await openDB();
+    return new Promise((res)=>{
+      const req = db.transaction(DB_STORE,'readonly').objectStore(DB_STORE).get(id);
+      req.onsuccess = () => res(req.result||null);
+      req.onerror = () => res(null);
+    });
+  } catch(e){ return null; }
+}
+
+async function openLocalFile(id, filename){
+  const record = await getFileLocal(id);
+  if(!record){ toast('File not found on this device — re-upload the invoice','wrn'); return; }
+  const blob = b64ToBlob(record.b64, record.type||'application/pdf');
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = filename || record.name || 'invoice.pdf';
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  setTimeout(()=>URL.revokeObjectURL(url), 5000);
+}
+
+function b64ToBlob(b64, type){
+  const binary = atob(b64);
+  const bytes = new Uint8Array(binary.length);
+  for(let i=0;i<binary.length;i++) bytes[i]=binary.charCodeAt(i);
+  return new Blob([bytes],{type});
+}
+
+// uploadToStorage now saves locally instead of Supabase
+async function uploadToStorage(file, invoiceId){
+  return await saveFileLocal(invoiceId, file);
 }
 
 // ─── FILENAME HELPERS ─────────────────────────────────────────────────────────
@@ -1170,8 +1224,8 @@ async function processFiles(files, overrideDelay=null){
           items[i].innerHTML=`<span>⟳</span><span>${files[i].name} — skipped (invoice # already exists)</span>`;skipped++;
         }else{
           const id=Date.now()+Math.random();
-          const safeFilename = String(id).replace(/\./g,'_')+'_'+files[i].name.replace(/[^a-zA-Z0-9._-]/g,'_');
-          const fileUrl = await uploadToStorage(files[i], safeFilename);
+          const safeId = String(id).replace(/\./g,'_');
+          const fileUrl = await uploadToStorage(files[i], safeId);
           invoices.push({...res,id,addedAt:new Date().toISOString(),filename:files[i].name,
             fileUrl: fileUrl||'',
             qty_shipped: res.qty_shipped||'',
@@ -1530,8 +1584,9 @@ function renderTbl(){
     else if(st==='overage') badge='<span class="badge badge-red">⚠ Overage</span>';
     else if(st==='partial') badge='<span class="badge badge-amber">Partial</span>';
     else                    badge='<span class="badge badge-gray">Pending</span>';
+    const safeInvId = String(x.id).replace(/\./g,'_');
     const invLink = x.fileUrl
-      ? `<a href="${x.fileUrl}" target="_blank" rel="noopener" style="color:var(--blue);font-weight:500;text-decoration:none" title="Open PDF">${esc(x.invoice_number||'—')} 🔗</a>`
+      ? `<span style="color:var(--blue);font-weight:500;text-decoration:underline;cursor:pointer" onclick="openLocalFile('${safeInvId}','${esc((x.filename||x.invoice_number||'invoice').replace(/'/g,''))}')" title="Download PDF">${esc(x.invoice_number||'—')} 📎</span>`
       : `<span style="color:var(--blue);font-weight:500">${esc(x.invoice_number||'—')}</span>`;
     html+=`<tr data-id="${x.id}" class="${isComp?'comp-row':''}">
       <td style="font-weight:600;color:var(--navy)">${esc(x.vendor||'—')}${newIds.has(x.id)?'<span class="new-tag">new</span>':''}</td>
@@ -1779,10 +1834,10 @@ function renderWeekly(){
       const wRowCls=st==='complete'?'wcomp':st==='overage'?'wover':'';
       const wkKey2 = key.replace(/[^a-zA-Z0-9]/g,'_');
       return `<tr class="${wRowCls}">
-        <td style="width:28px;text-align:center;padding:4px"><input type="checkbox" class="wpdf-chk" data-wk="${wkKey2}" data-url="${x.fileUrl||''}" data-name="${(x.filename||x.invoice_number||String(x.id)).replace(/"/g,'')}" style="width:15px;height:15px;cursor:pointer" ${!x.fileUrl?'title="No PDF stored" style="opacity:.4;width:15px;height:15px"':''}></td>
+        <td style="width:28px;text-align:center;padding:4px"><input type="checkbox" class="wpdf-chk" data-wk="${wkKey2}" data-url="${x.fileUrl||''}" data-id="${String(x.id).replace(/\./g,'_')}" data-name="${(x.filename||x.invoice_number||String(x.id)).replace(/"/g,'')}" style="width:15px;height:15px;cursor:pointer" ${!x.fileUrl?'title="No PDF on this device"':''}></td>
         <td class="wv">${esc(x.vendor||'—')}</td>
         <td class="wd">${esc(x.date||'—')}</td>
-        <td class="wi">${x.fileUrl?`<a href="${x.fileUrl}" target="_blank" rel="noopener" style="color:var(--blue);font-weight:500;text-decoration:none">${esc(x.invoice_number||'—')} 🔗</a>`:esc(x.invoice_number||'—')}</td>
+        <td class="wi">${x.fileUrl?`<span style="color:var(--blue);font-weight:500;text-decoration:underline;cursor:pointer" onclick="openLocalFile('${String(x.id).replace(/\./g,'_')}','${(x.filename||x.invoice_number||'invoice').replace(/'/g,'')}')" title="Download PDF">${esc(x.invoice_number||'—')} 📎</span>`:esc(x.invoice_number||'—')}</td>
         <td style="text-align:center;font-weight:600">${b||'—'}</td>
         <td style="text-align:center">${rcvInp('rcv1')}</td>
         <td style="text-align:center">${rcvInp('rcv2')}</td>
@@ -1807,7 +1862,7 @@ function renderWeekly(){
           <div class="week-pill boxes">📬 <strong>${wRcvd}</strong> received</div>
           <div class="week-pill done">✓ <strong>${wDone}</strong> complete</div>
           <div class="week-pill money">💰 <strong>$${wTotal.toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2})}</strong></div>
-          <button onclick="exportWeekPDFs('${wkSafeKey}')" style="background:rgba(255,255,255,.2);color:#fff;border:1px solid rgba(255,255,255,.4);padding:3px 12px;border-radius:5px;font-size:11px;font-weight:600;cursor:pointer;margin-left:4px">⬇ PDFs</button>
+          <button onclick="exportWeekPDFs('${wkSafeKey}')" style="background:rgba(255,255,255,.2);color:#fff;border:1px solid rgba(255,255,255,.4);padding:3px 12px;border-radius:5px;font-size:11px;font-weight:600;cursor:pointer;margin-left:4px">⬇ DL</button>
         </div>
       </div>
       <div class="week-body">
@@ -1832,29 +1887,37 @@ function renderWeekly(){
 
 // ─── PDF WEEK EXPORT ─────────────────────────────────────────────────────────
 async function exportWeekPDFs(wkKey){
-  // Get all checked boxes for this week, or if none checked, grab all with URLs
   const allChk = Array.from(document.querySelectorAll(`.wpdf-chk[data-wk="${wkKey}"]`));
   const checked = allChk.filter(c=>c.checked);
   const targets = checked.length ? checked : allChk.filter(c=>c.dataset.url);
 
   if(!targets.length){
-    toast('⚠️ No PDFs available for this week — upload invoices as PDFs first','wrn');
+    toast('⚠️ No PDFs on this device — upload invoices on this device first','wrn');
     return;
   }
 
+  let downloaded = 0;
   toast(`⬇ Downloading ${targets.length} PDF${targets.length!==1?'s':''}…`,'ok');
   for(let i=0;i<targets.length;i++){
     const t = targets[i];
     if(!t.dataset.url) continue;
+    const invoiceId = t.dataset.id || t.dataset.url.replace('local:','');
+    const record = await getFileLocal(invoiceId);
+    if(!record){ continue; }
+    const blob = b64ToBlob(record.b64, record.type||'application/pdf');
+    const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
-    a.href = t.dataset.url;
-    a.target = '_blank';
-    a.download = t.dataset.name || 'invoice.pdf';
+    a.href = url;
+    a.download = t.dataset.name || record.name || 'invoice.pdf';
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);
+    setTimeout(()=>URL.revokeObjectURL(url), 5000);
+    downloaded++;
     if(i < targets.length-1) await sleep(400);
   }
+  if(downloaded === 0) toast('⚠️ Files not on this device — re-upload from this laptop','wrn');
+  else toast(`✅ ${downloaded} PDF${downloaded!==1?'s':''} downloaded`,'ok');
 }
 
 // ─── EXPORT ───────────────────────────────────────────────────────────────────
@@ -2231,75 +2294,7 @@ updateKeyUI();
 })();
 if(!getKey()) setTimeout(()=>openM('apiMod'),500);
 
-// ─── PWA SERVICE WORKER ───────────────────────────────────────────────────────
-if('serviceWorker' in navigator){
-  navigator.serviceWorker.register('sw.js').catch(()=>{});
-}
+
 </script>
 </body>
 </html>
-
-{
-  "name": "Cee Kay Invoice Tracker",
-  "short_name": "Cee Kay",
-  "description": "Invoice tracking for Cee Kay Beauty Supply",
-  "start_url": "/Box-count/",
-  "scope": "/Box-count/",
-  "display": "standalone",
-  "orientation": "portrait-primary",
-  "background_color": "#1e3a5f",
-  "theme_color": "#1e3a5f",
-  "icons": [
-    {
-      "src": "icon-192.png",
-      "sizes": "192x192",
-      "type": "image/png",
-      "purpose": "any maskable"
-    },
-    {
-      "src": "icon-512.png",
-      "sizes": "512x512",
-      "type": "image/png",
-      "purpose": "any maskable"
-    }
-  ]
-}
-
-const CACHE = 'ceekay-v1';
-const OFFLINE_URLS = [
-  '/Box-count/',
-  '/Box-count/index.html'
-];
-
-self.addEventListener('install', e => {
-  e.waitUntil(
-    caches.open(CACHE).then(c => c.addAll(OFFLINE_URLS)).catch(() => {})
-  );
-  self.skipWaiting();
-});
-
-self.addEventListener('activate', e => {
-  e.waitUntil(
-    caches.keys().then(keys =>
-      Promise.all(keys.filter(k => k !== CACHE).map(k => caches.delete(k)))
-    )
-  );
-  self.clients.claim();
-});
-
-self.addEventListener('fetch', e => {
-  // Only cache same-origin GET requests — never intercept Supabase/API calls
-  if(e.request.method !== 'GET') return;
-  const url = new URL(e.request.url);
-  if(url.hostname.includes('supabase') || url.hostname.includes('anthropic') || url.hostname.includes('cdn')) return;
-
-  e.respondWith(
-    fetch(e.request)
-      .then(res => {
-        const clone = res.clone();
-        caches.open(CACHE).then(c => c.put(e.request, clone));
-        return res;
-      })
-      .catch(() => caches.match(e.request))
-  );
-});
