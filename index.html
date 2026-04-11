@@ -451,17 +451,17 @@ tbody tr:hover .delbtn,tbody tr:hover .editbtn{opacity:1;}
     <button class="tab-btn" id="settingsTab" onclick="showPage('settings',this)" style="display:none">⚙ Settings</button>
   </div>
   <div class="hdr-right">
-    <div class="api-pill" onclick="openM('aliasModal')" title="Manage vendor aliases">⚙ Aliases</div>
-    <div class="api-pill" id="adminBtn" style="cursor:default;display:none">👤 <span id="adminBtnLabel">—</span></div>
-    <button id="lockBtn" onclick="pinLogout()" title="Lock screen" style="display:none;background:rgba(255,255,255,.15);border:1px solid rgba(255,255,255,.25);color:#fff;padding:5px 12px;border-radius:6px;font-size:12px;cursor:pointer;font-family:Inter,sans-serif">🔒 Lock</button>
-    <div class="api-pill" onclick="openM('apiMod')">
-      <div class="dot" id="apiDot"></div><span id="apiTxt">No API Key</span>
+    <div class="api-pill" onclick="openM('apiMod')" title="API Key settings" style="min-width:80px">
+      <div class="dot" id="apiDot"></div><span id="apiTxt">API Key</span>
     </div>
     <div class="api-pill" id="syncStatus" style="cursor:default">
       <div class="dot" id="syncDot" style="background:#6b7280"></div>
       <span id="syncTxt">Syncing...</span>
     </div>
     <button class="xbtn" onclick="manualSync()" title="Sync with team database" style="background:transparent;border:1px solid rgba(255,255,255,0.2);color:#fff;padding:6px 12px;border-radius:6px;font-size:12px;cursor:pointer">↻ Sync</button>
+    <div class="api-pill" onclick="openM('aliasModal')" title="Manage vendor aliases">⚙ Aliases</div>
+    <div class="api-pill" id="adminBtn" style="cursor:default;display:none">👤 <span id="adminBtnLabel">—</span></div>
+    <button id="lockBtn" onclick="pinLogout()" title="Lock screen" style="display:none;background:rgba(255,255,255,.15);border:1px solid rgba(255,255,255,.25);color:#fff;padding:5px 12px;border-radius:6px;font-size:12px;cursor:pointer;font-family:Inter,sans-serif">🔒 Lock</button>
     <button class="xbtn" id="exportBtn" onclick="exportXL()" disabled>↓ Export</button>
   </div>
 </header>
@@ -690,7 +690,7 @@ tbody tr:hover .delbtn,tbody tr:hover .editbtn{opacity:1;}
     </div>
 
     <!-- Timeout setting -->
-    <div style="background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:20px">
+    <div style="background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:20px;margin-bottom:20px">
       <div style="font-size:14px;font-weight:700;color:var(--navy);margin-bottom:4px">⏱ Auto Lock</div>
       <div style="font-size:12px;color:var(--text3);margin-bottom:14px">Lock screen after inactivity.</div>
       <select id="timeoutSetting" onchange="saveTimeoutSetting()" style="padding:9px 12px;border:1px solid var(--border2);border-radius:7px;font-size:13px;font-family:Inter,sans-serif;background:var(--surface)">
@@ -699,6 +699,13 @@ tbody tr:hover .delbtn,tbody tr:hover .editbtn{opacity:1;}
         <option value="10">10 minutes</option>
         <option value="30">30 minutes</option>
       </select>
+    </div>
+
+    <!-- Cloud sync -->
+    <div style="background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:20px">
+      <div style="font-size:14px;font-weight:700;color:var(--navy);margin-bottom:4px">☁ Cloud Sync</div>
+      <div style="font-size:12px;color:var(--text3);margin-bottom:14px">Users are saved to cloud automatically. If another device shows wrong users, force a sync here.</div>
+      <button onclick="forceSyncUsersToCloud()" style="background:var(--blue);color:#fff;border:none;padding:9px 20px;border-radius:7px;font-size:13px;font-weight:600;cursor:pointer">↑ Push Users to Cloud</button>
     </div>
 
   </div>
@@ -2877,19 +2884,50 @@ async function loadPinUsersFromSupabase(){
     const {data,error} = await supa.from('settings').select('value').eq('key','pin_users').maybeSingle();
     if(!error && data && data.value){
       const remote = JSON.parse(data.value);
-      // Only use remote if it has actual users (not empty placeholder)
       if(remote && remote.length > 0){
-        pinUsers = remote;
-        localStorage.setItem('ck_pin_users', JSON.stringify(pinUsers));
-        console.log('✓ Loaded', pinUsers.length, 'users from Supabase');
+        // Use remote ONLY if it has more than the default 0000 entry,
+        // OR if local is also just default/empty
+        const localRaw = JSON.parse(localStorage.getItem('ck_pin_users')||'null');
+        const localHasRealUsers = localRaw && localRaw.length > 0 && 
+          !(localRaw.length === 1 && localRaw[0].pin === '0000');
+        const remoteHasRealUsers = remote.length > 0 && 
+          !(remote.length === 1 && remote[0].pin === '0000');
+        
+        if(remoteHasRealUsers){
+          // Remote has real users — use it as source of truth
+          pinUsers = remote;
+          localStorage.setItem('ck_pin_users', JSON.stringify(pinUsers));
+          console.log('✓ Loaded', pinUsers.length, 'users from Supabase');
+          return true;
+        } else if(localHasRealUsers){
+          // Local has real users but Supabase only has default — push local to Supabase
+          console.log('↑ Pushing local users to Supabase');
+          savePinUsers();
+          return true;
+        }
+      }
+    } else {
+      // Nothing in Supabase — push local users up if we have any
+      const localRaw = JSON.parse(localStorage.getItem('ck_pin_users')||'null');
+      if(localRaw && localRaw.length > 0){
+        pinUsers = localRaw;
+        savePinUsers(); // push to Supabase
         return true;
       }
     }
   }catch(e){ console.warn('pin_users load error:',e.message); }
-  // Fall back to localStorage or default admin
+  // Last resort: use localStorage or default
   const local = JSON.parse(localStorage.getItem('ck_pin_users')||'null');
   if(local && local.length) pinUsers = local;
   return false;
+}
+
+// Force push current pinUsers to Supabase (for sync button)
+async function forceSyncUsersToCloud(){
+  try{
+    await supa.from('settings').upsert({key:'pin_users', value:JSON.stringify(pinUsers)},{onConflict:'key'});
+    toast('✅ Users synced to cloud','ok');
+  }catch(e){ toast('⚠️ Sync failed: '+e.message,'err'); }
 }
 
 function pinKey(digit){
@@ -3013,7 +3051,7 @@ function renderAdminUserList(){
   `).join('');
 }
 
-function adminAddUser(){
+async function adminAddUser(){
   if(currentUser?.role !== 'admin'){ toast('Only Admin can add users','wrn'); return; }
   const name = document.getElementById('newUserName').value.trim();
   const pin  = document.getElementById('newUserPin').value.trim();
@@ -3021,7 +3059,15 @@ function adminAddUser(){
   const role = roleEl ? roleEl.value : 'stock';
   if(!name){ toast('Enter a name','wrn'); return; }
   if(!/^\d{4}$/.test(pin)){ toast('PIN must be exactly 4 digits','wrn'); return; }
-  if(pinUsers.some(u=>u.pin===pin)){ toast('That PIN is already in use','wrn'); return; }
+
+  // Reload from Supabase to get latest list before checking duplicates
+  await loadPinUsersFromSupabase();
+
+  if(pinUsers.some(u=>u.pin===pin)){
+    toast('That PIN is already in use by: '+(pinUsers.find(u=>u.pin===pin)?.name||'unknown'),'wrn');
+    renderSettings(); // refresh UI to show all current users
+    return;
+  }
   if(pinUsers.some(u=>u.name.toLowerCase()===name.toLowerCase())){ toast('Name already exists','wrn'); return; }
   pinUsers.push({name, pin, role});
   savePinUsers();
@@ -3108,7 +3154,6 @@ function saveChangePIN(){
   const errEl      = document.getElementById('changePinError');
   if(!/^\d{4}$/.test(newPin)){ errEl.textContent='PIN must be exactly 4 digits'; return; }
   if(newPin !== confirmPin){ errEl.textContent='PINs do not match'; return; }
-  // Check not already in use by someone else
   if(pinUsers.some((u,i)=>i!==_changePinIndex && u.pin===newPin)){
     errEl.textContent='That PIN is already used by another user'; return;
   }
@@ -3118,14 +3163,15 @@ function saveChangePIN(){
   closeM('changePinMod');
   renderSettings();
   toast('PIN updated for '+pinUsers[_changePinIndex].name,'ok');
-  // If changing own PIN, log out so they re-login with new PIN
   if(isMe){
-    setTimeout(()=>{ toast('Please log in with your new PIN','ok'); pinLogout(); }, 1500);
+    setTimeout(()=>{ toast('Log in with your new PIN','ok'); pinLogout(); }, 1500);
   }
 }
 
 // ─── SETTINGS PAGE ────────────────────────────────────────────────────────────
-function renderSettings(){
+async function renderSettings(){
+  // Always reload from Supabase first to show accurate user list
+  await loadPinUsersFromSupabase();
   // Update current user display
   if(currentUser){
     const el = document.getElementById('settingsCurrentUser');
@@ -3383,9 +3429,11 @@ if(!getKey()) setTimeout(()=>openM('apiMod'),500);
     <div style="font-size:13px;color:var(--text2);margin-bottom:16px">Changing PIN for: <strong id="changePinName">—</strong></div>
     <div style="display:flex;flex-direction:column;gap:10px;margin-bottom:16px">
       <input id="changePinNew" type="password" maxlength="4" placeholder="New 4-digit PIN"
-        style="padding:10px 14px;border:2px solid var(--border2);border-radius:8px;font-size:18px;text-align:center;letter-spacing:8px;font-family:Inter,sans-serif;width:100%;box-sizing:border-box"/>
+        style="padding:10px 14px;border:2px solid var(--border2);border-radius:8px;font-size:18px;text-align:center;letter-spacing:8px;font-family:Inter,sans-serif;width:100%;box-sizing:border-box"
+        onkeydown="if(event.key==='Enter'){event.preventDefault();document.getElementById('changePinConfirm').focus();document.getElementById('changePinConfirm').select();}" />
       <input id="changePinConfirm" type="password" maxlength="4" placeholder="Confirm PIN"
-        style="padding:10px 14px;border:2px solid var(--border2);border-radius:8px;font-size:18px;text-align:center;letter-spacing:8px;font-family:Inter,sans-serif;width:100%;box-sizing:border-box"/>
+        style="padding:10px 14px;border:2px solid var(--border2);border-radius:8px;font-size:18px;text-align:center;letter-spacing:8px;font-family:Inter,sans-serif;width:100%;box-sizing:border-box"
+        onkeydown="if(event.key==='Enter'){event.preventDefault();saveChangePIN();}" />
     </div>
     <div id="changePinError" style="color:#dc2626;font-size:12px;margin-bottom:12px;min-height:16px"></div>
     <button onclick="saveChangePIN()" style="background:var(--blue);color:#fff;border:none;padding:10px 28px;border-radius:7px;font-size:14px;font-weight:600;cursor:pointer;width:100%">Save New PIN</button>
