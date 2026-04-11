@@ -428,10 +428,27 @@ tbody tr:hover .delbtn,tbody tr:hover .editbtn{opacity:1;}
     <div class="dz-sub">Drag &amp; drop or tap to upload PDF invoices &nbsp;·&nbsp; Duplicates skipped automatically</div>
     <div style="display:flex;gap:10px;justify-content:center;margin-top:12px;flex-wrap:wrap">
       <button onclick="event.stopPropagation();document.getElementById('fi').click()" style="background:var(--blue);color:#fff;border:none;padding:10px 22px;border-radius:7px;font-family:Inter,sans-serif;font-size:13px;font-weight:600;cursor:pointer">📁 Choose Files</button>
-      <button onclick="event.stopPropagation();document.getElementById('fi-camera').click()" style="background:var(--surface2);color:var(--text);border:1px solid var(--border2);padding:10px 22px;border-radius:7px;font-family:Inter,sans-serif;font-size:13px;font-weight:600;cursor:pointer">📷 Use Camera</button>
+      <button onclick="event.stopPropagation();openCameraMode()" style="background:var(--surface2);color:var(--text);border:1px solid var(--border2);padding:10px 22px;border-radius:7px;font-family:Inter,sans-serif;font-size:13px;font-weight:600;cursor:pointer">📷 Camera</button>
     </div>
     <input type="file" id="fi" multiple accept=".pdf,image/*" />
     <input type="file" id="fi-camera" accept="image/*" capture="environment" style="display:none" />
+  </div>
+
+  <!-- Camera Multi-Page Modal -->
+  <div id="camMod" class="modal" style="display:none;position:fixed;inset:0;z-index:999;background:rgba(0,0,0,.55);align-items:center;justify-content:center">
+    <div style="background:var(--surface);border-radius:14px;padding:28px;width:min(94vw,420px);box-shadow:0 20px 60px rgba(0,0,0,.3)">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:18px">
+        <div style="font-size:16px;font-weight:700;color:var(--navy)">📷 Camera Invoice</div>
+        <button onclick="closeCameraMode()" style="background:none;border:none;font-size:20px;cursor:pointer;color:var(--text3)">✕</button>
+      </div>
+      <div style="font-size:13px;color:var(--text2);margin-bottom:16px">Shoot each page of the invoice one at a time. When done, tap <strong>Process Invoice</strong>.</div>
+      <div id="camPages" style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:16px;min-height:60px"></div>
+      <div style="display:flex;gap:10px;flex-wrap:wrap">
+        <button onclick="shootPage()" style="background:var(--blue);color:#fff;border:none;padding:10px 20px;border-radius:7px;font-size:13px;font-weight:600;cursor:pointer;flex:1">📸 Add Page</button>
+        <button id="camProcessBtn" onclick="processCameraPages()" disabled style="background:#10b981;color:#fff;border:none;padding:10px 20px;border-radius:7px;font-size:13px;font-weight:600;cursor:pointer;flex:1;opacity:.5">✓ Process Invoice</button>
+      </div>
+      <input type="file" id="fi-cam-page" accept="image/*" capture="environment" style="display:none" />
+    </div>
   </div>
 
   <div class="sbar">
@@ -455,9 +472,15 @@ tbody tr:hover .delbtn,tbody tr:hover .editbtn{opacity:1;}
         <button class="btn-outline" onclick="openM('clearMod')">Clear All</button>
       </div>
     </div>
+    <div id="pdfToolbar" style="display:none;align-items:center;gap:12px;padding:10px 16px;background:var(--blue);color:#fff;border-radius:8px;margin:0 0 12px 0;font-size:13px">
+      <span id="pdfSelCount" style="font-weight:600">0 selected</span>
+      <button onclick="exportSelectedPDFs()" style="background:#fff;color:var(--blue);border:none;padding:6px 16px;border-radius:6px;font-size:12px;font-weight:700;cursor:pointer">⬇ Download PDFs</button>
+      <button onclick="clearPdfSelection()" style="background:rgba(255,255,255,.2);color:#fff;border:none;padding:6px 12px;border-radius:6px;font-size:12px;cursor:pointer">✕ Clear</button>
+    </div>
     <div class="tw">
       <table id="mainTbl">
         <thead><tr>
+          <th style="width:28px;text-align:center"><input type="checkbox" id="chkAll" onclick="toggleAllPdf(this)" style="width:15px;height:15px;cursor:pointer" title="Select all"></th>
           <th>Vendor</th>
           <th>Date</th>
           <th>Invoice #</th>
@@ -652,6 +675,7 @@ async function sbSaveInvoices(){
     total: x.total!=null && x.total!=='' ? parseFloat(String(x.total).replace(/[^0-9.]/g,''))||0 : 0,
     qty_shipped: x.qty_shipped!=null && x.qty_shipped!=='' ? parseInt(x.qty_shipped,10)||0 : 0,
     added_at: x.addedAt||new Date().toISOString(),
+    file_url: x.fileUrl||'',
     rcv1: x.rcv1!=null && x.rcv1!=='' ? parseInt(x.rcv1,10)||0 : 0,
     rcv1ts: x.rcv1ts||'',
     rcv2: x.rcv2!=null && x.rcv2!=='' ? parseInt(x.rcv2,10)||0 : 0,
@@ -690,6 +714,7 @@ async function sbLoadAll(){
       invoices = inv.map(r=>({
         id:r.id, vendor:r.vendor, date:r.date,
         invoice_number:r.invoice_number, filename:r.filename,
+        fileUrl:r.file_url||'',
         boxes:r.boxes, total:r.total, qty_shipped:r.qty_shipped,
         addedAt:r.added_at,
         rcv1:r.rcv1||'', rcv1ts:r.rcv1ts||'',
@@ -946,7 +971,162 @@ dzEl.addEventListener('drop', e=>{
 document.getElementById('fi').addEventListener('change',e=>{
   const f=Array.from(e.target.files);if(f.length) processFiles(f);e.target.value='';});
 document.getElementById('fi-camera').addEventListener('change',e=>{
-  const f=Array.from(e.target.files);if(f.length) processFiles(f);e.target.value='';});
+  const f=Array.from(e.target.files);
+  if(f.length) processFiles(f.map(renameWithTimestamp));
+  e.target.value='';
+});
+
+// ─── CAMERA MULTI-PAGE ────────────────────────────────────────────────────────
+let cameraPages = []; // array of File objects
+
+function openCameraMode(){
+  cameraPages = [];
+  document.getElementById('camPages').innerHTML = '';
+  document.getElementById('camProcessBtn').disabled = true;
+  document.getElementById('camProcessBtn').style.opacity = '.5';
+  document.getElementById('camMod').style.display = 'flex';
+}
+
+function closeCameraMode(){
+  cameraPages = [];
+  document.getElementById('camMod').style.display = 'none';
+}
+
+function shootPage(){
+  const input = document.getElementById('fi-cam-page');
+  input.value = '';
+  input.onchange = e => {
+    const f = e.target.files[0];
+    if(!f) return;
+    cameraPages.push(f);
+    const container = document.getElementById('camPages');
+    const thumb = document.createElement('div');
+    thumb.style.cssText = 'position:relative;width:70px;height:90px;border-radius:6px;overflow:hidden;border:2px solid var(--blue);background:var(--surface2)';
+    const img = document.createElement('img');
+    img.style.cssText = 'width:100%;height:100%;object-fit:cover';
+    const url = URL.createObjectURL(f);
+    img.src = url;
+    const lbl = document.createElement('div');
+    lbl.style.cssText = 'position:absolute;bottom:0;left:0;right:0;background:rgba(0,0,0,.6);color:#fff;font-size:9px;text-align:center;padding:2px';
+    lbl.textContent = 'Pg ' + cameraPages.length;
+    thumb.appendChild(img);
+    thumb.appendChild(lbl);
+    container.appendChild(thumb);
+    const btn = document.getElementById('camProcessBtn');
+    btn.disabled = false;
+    btn.style.opacity = '1';
+    input.value = '';
+  };
+  input.click();
+}
+
+async function processCameraPages(){
+  if(!cameraPages.length) return;
+  closeCameraMode();
+  // Give all pages a unique timestamped name so no duplicates
+  const ts = Date.now();
+  const named = cameraPages.map((f,i) => renameFile(f, `CAM_${ts}_p${i+1}.jpg`));
+  if(named.length === 1){
+    // Single page — process normally
+    processFiles(named);
+  } else {
+    // Multi-page — send all images together in one Claude API call
+    processMultiPageCamera(named, ts);
+  }
+}
+
+async function processMultiPageCamera(pages, ts){
+  if(!getKey()){openM('apiMod');toast('Enter your API key first','wrn');return;}
+  const pw=document.getElementById('pw'),bar=document.getElementById('pb'),
+        lbl=document.getElementById('pLbl'),cnt=document.getElementById('pCnt'),
+        lst=document.getElementById('pl');
+  pw.classList.add('show'); lst.innerHTML='';
+  const item = document.createElement('div');
+  item.className='pi going';
+  item.innerHTML=`<div class="spin"></div><span>Camera invoice (${pages.length} pages)…</span>`;
+  lst.appendChild(item);
+  lbl.textContent=`Processing ${pages.length}-page camera invoice…`;
+  cnt.textContent='1/1';
+  bar.style.width='50%';
+  try{
+    const res = await callClaudeMultiImage(pages);
+    res.vendor = applyAlias(res.vendor);
+    const invDup = res.invoice_number && invoices.some(x=>x.invoice_number===res.invoice_number);
+    if(invDup){
+      item.className='pi skip';
+      item.innerHTML=`<span>⟳</span><span>Camera invoice — skipped (invoice # already exists)</span>`;
+    } else {
+      const filename = `CAM_${ts}_${pages.length}pg.jpg`;
+      const id = Date.now()+Math.random();
+      // Upload first page as representative image to Supabase Storage
+      const fileUrl = await uploadToStorage(pages[0], String(id).replace(/\./g,'_')+'_cam.jpg');
+      invoices.push({...res, id, addedAt:new Date().toISOString(), filename,
+        fileUrl: fileUrl||'',
+        qty_shipped:res.qty_shipped||'',
+        rcv1:'',rcv1ts:'',rcv2:'',rcv2ts:'',rcv3:'',rcv3ts:''});
+      newIds.add(id);
+      item.className='pi done';
+      item.innerHTML=`<span>✓</span><span>${filename} — <strong>${res.vendor}</strong> · ${res.total}</span>`;
+      save(); renderTbl(); updateStats();
+    }
+  } catch(e){
+    item.className='pi err';
+    item.innerHTML=`<span>✗</span><span>Camera invoice — ${e.message}</span>`;
+  }
+  bar.style.width='100%'; cnt.textContent='1/1';
+  lbl.textContent='Done!';
+  setTimeout(()=>{pw.classList.remove('show');bar.style.width='0%';lst.innerHTML='';newIds.clear();},7000);
+}
+
+async function callClaudeMultiImage(pages){
+  const prompt='Extract invoice summary data and return ONLY a JSON object (no markdown, no explanation).\nFormat: {"vendor":"seller/supplier name (never Cee Kay)","date":"MM/DD/YYYY","invoice_number":"exact invoice number","boxes":"total carton/box count as integer or null","total":"final net total e.g. $1,234.56","qty_shipped":"total quantity of individual items/pieces shipped as integer or null"}\nThis is a multi-page invoice — all pages shown. Total and qty are usually on the last page. vendor = company selling TO Cee Kay.';
+  const content = [];
+  for(const page of pages){
+    const b64 = await toB64(page);
+    const mime = page.type.startsWith('image/') ? page.type : 'image/jpeg';
+    content.push({type:'image',source:{type:'base64',media_type:mime,data:b64}});
+  }
+  content.push({type:'text',text:prompt});
+  const r = await fetch('https://api.anthropic.com/v1/messages',{
+    method:'POST',
+    headers:{'Content-Type':'application/json','x-api-key':getKey(),
+      'anthropic-version':'2023-06-01','anthropic-dangerous-direct-browser-access':'true'},
+    body:JSON.stringify({model:'claude-sonnet-4-20250514',max_tokens:800,messages:[{role:'user',content}]})
+  });
+  if(!r.ok){const eb=await r.json().catch(()=>({error:{message:'HTTP '+r.status}}));throw new Error(eb.error?.message||'API error');}
+  const d = await r.json();
+  const textBlock = d.content.find(b=>b.type==='text');
+  if(!textBlock) throw new Error('No response from API');
+  const clean = textBlock.text.trim().replace(/^```json\s*/,'').replace(/```\s*$/,'').trim();
+  const match = clean.match(/\{[\s\S]*\}/);
+  if(!match) throw new Error('No JSON in response');
+  return JSON.parse(match[0]);
+}
+
+// ─── SUPABASE STORAGE ─────────────────────────────────────────────────────────
+async function uploadToStorage(file, filename){
+  try{
+    const {data, error} = await supa.storage.from('invoices').upload(filename, file, {
+      upsert: true,
+      contentType: file.type || 'application/octet-stream'
+    });
+    if(error){ console.warn('Storage upload error:', error.message); return ''; }
+    const {data:{publicUrl}} = supa.storage.from('invoices').getPublicUrl(filename);
+    return publicUrl;
+  } catch(e){ console.warn('Storage error:', e.message); return ''; }
+}
+
+// ─── FILENAME HELPERS ─────────────────────────────────────────────────────────
+function renameWithTimestamp(file){
+  const ts = Date.now();
+  const ext = file.name.split('.').pop() || 'pdf';
+  const base = file.name.replace(/\.[^.]+$/,'').substring(0,30);
+  return renameFile(file, `${base}_${ts}.${ext}`);
+}
+
+function renameFile(file, newName){
+  return new File([file], newName, {type: file.type, lastModified: file.lastModified});
+}
 
 // ─── PROCESS ──────────────────────────────────────────────────────────────────
 async function processFiles(files, overrideDelay=null){
@@ -982,7 +1162,10 @@ async function processFiles(files, overrideDelay=null){
           items[i].innerHTML=`<span>⟳</span><span>${files[i].name} — skipped (invoice # already exists)</span>`;skipped++;
         }else{
           const id=Date.now()+Math.random();
+          const safeFilename = String(id).replace(/\./g,'_')+'_'+files[i].name.replace(/[^a-zA-Z0-9._-]/g,'_');
+          const fileUrl = await uploadToStorage(files[i], safeFilename);
           invoices.push({...res,id,addedAt:new Date().toISOString(),filename:files[i].name,
+            fileUrl: fileUrl||'',
             qty_shipped: res.qty_shipped||'',
             rcv1:'',rcv1ts:'',rcv2:'',rcv2ts:'',rcv3:'',rcv3ts:''});
           newIds.add(id);
@@ -1339,10 +1522,14 @@ function renderTbl(){
     else if(st==='overage') badge='<span class="badge badge-red">⚠ Overage</span>';
     else if(st==='partial') badge='<span class="badge badge-amber">Partial</span>';
     else                    badge='<span class="badge badge-gray">Pending</span>';
+    const invLink = x.fileUrl
+      ? `<a href="${x.fileUrl}" target="_blank" rel="noopener" style="color:var(--blue);font-weight:500;text-decoration:none" title="Open PDF">${esc(x.invoice_number||'—')} 🔗</a>`
+      : `<span style="color:var(--blue);font-weight:500">${esc(x.invoice_number||'—')}</span>`;
     html+=`<tr data-id="${x.id}" class="${isComp?'comp-row':''}">
+      <td style="width:28px;text-align:center;padding:6px 4px"><input type="checkbox" class="pdf-chk" data-id="${x.id}" data-url="${x.fileUrl||''}" data-name="${esc((x.filename||x.invoice_number||String(x.id)).replace(/"/g,''))}" style="width:15px;height:15px;cursor:pointer"></td>
       <td style="font-weight:600;color:var(--navy)">${esc(x.vendor||'—')}${newIds.has(x.id)?'<span class="new-tag">new</span>':''}</td>
       <td style="color:var(--text2);font-size:12px">${esc(x.date||'—')}</td>
-      <td><span style="color:var(--blue);font-weight:500">${esc(x.invoice_number||'—')}</span></td>
+      <td>${invLink}</td>
       <td><div class="fname" title="${esc(x.filename||'')}">${x.filename?'📎 '+esc(x.filename.length>20?x.filename.substring(0,18)+'…':x.filename):'—'}</div></td>
       <td style="text-align:center">${boxes||'—'}</td>
       <td style="text-align:right;font-family:'Fraunces',serif;font-weight:700">${esc(x.total||'—')}</td>
@@ -1380,6 +1567,71 @@ function doSort(col){
   renderTbl();
 }
 function filterTbl(){searchQ=document.getElementById('si').value;renderTbl();}
+
+// ─── PDF EXPORT ───────────────────────────────────────────────────────────────
+function toggleAllPdf(chk){
+  document.querySelectorAll('.pdf-chk').forEach(c=>c.checked=chk.checked);
+  updatePdfToolbar();
+}
+
+function updatePdfToolbar(){
+  const checked = document.querySelectorAll('.pdf-chk:checked');
+  const toolbar = document.getElementById('pdfToolbar');
+  const countEl = document.getElementById('pdfSelCount');
+  if(checked.length > 0){
+    toolbar.style.display='flex';
+    countEl.textContent = checked.length + ' selected';
+  } else {
+    toolbar.style.display='none';
+  }
+  // Update select-all state
+  const all = document.querySelectorAll('.pdf-chk');
+  const chkAll = document.getElementById('chkAll');
+  if(chkAll) chkAll.checked = all.length > 0 && checked.length === all.length;
+}
+
+// Wire up checkbox change — use event delegation
+document.getElementById('mainTbl').addEventListener('change', e=>{
+  if(e.target.classList.contains('pdf-chk')) updatePdfToolbar();
+});
+
+function clearPdfSelection(){
+  document.querySelectorAll('.pdf-chk').forEach(c=>c.checked=false);
+  const chkAll = document.getElementById('chkAll');
+  if(chkAll) chkAll.checked = false;
+  updatePdfToolbar();
+}
+
+async function exportSelectedPDFs(){
+  const checked = Array.from(document.querySelectorAll('.pdf-chk:checked'));
+  const withUrl = checked.filter(c=>c.dataset.url);
+  const noUrl   = checked.filter(c=>!c.dataset.url);
+
+  if(!withUrl.length){
+    toast('⚠️ No PDFs available — invoices must be uploaded to storage first','wrn');
+    return;
+  }
+  if(noUrl.length){
+    toast(`ℹ️ ${noUrl.length} invoice${noUrl.length!==1?'s':''} skipped — no PDF stored yet`,'wrn');
+  }
+
+  toast(`⬇ Downloading ${withUrl.length} PDF${withUrl.length!==1?'s':''}…`,'ok');
+
+  // Open each PDF in a new tab (browser will download or preview)
+  // Small delay between each so browser doesn't block pop-ups
+  for(let i=0; i<withUrl.length; i++){
+    const c = withUrl[i];
+    const a = document.createElement('a');
+    a.href = c.dataset.url;
+    a.target = '_blank';
+    a.download = c.dataset.name || 'invoice.pdf';
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    if(i < withUrl.length-1) await sleep(400);
+  }
+  clearPdfSelection();
+}
 
 // ─── EDIT ─────────────────────────────────────────────────────────────────────
 function openEdit(id){
