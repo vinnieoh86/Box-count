@@ -69,7 +69,7 @@ header{background:var(--navy);padding:0 32px;display:flex;align-items:stretch;ju
 .page.active{display:block;}
 
 /* ── MODALS ── */
-.ov{position:fixed;inset:0;background:rgba(0,0,0,0.4);backdrop-filter:blur(3px);z-index:200;display:flex;align-items:center;justify-content:center;opacity:0;pointer-events:none;transition:opacity .2s;}
+.ov{position:fixed;inset:0;background:rgba(0,0,0,0.4);backdrop-filter:blur(3px);z-index:200;display:flex;align-items:center;justify-content:center;opacity:0;pointer-events:none;}
 .ov.show{opacity:1;pointer-events:all;}
 .modal{background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:32px;width:480px;max-width:93vw;transform:translateY(12px);transition:transform .2s;box-shadow:var(--shadow-md);}
 .ov.show .modal{transform:translateY(0);}
@@ -1266,7 +1266,8 @@ function sanitizeMime(type){
 }
 
 async function callClaudeMultiImage(pages){
-  const prompt='Extract invoice summary data and return ONLY a JSON object (no markdown, no explanation).\nFormat: {"vendor":"seller/supplier name (never Cee Kay)","date":"MM/DD/YYYY","invoice_number":"exact invoice number","boxes":"total carton/box count as integer or null","total":"final net total e.g. $1,234.56","qty_shipped":"total quantity of individual items/pieces shipped as integer or null"}\nThis is a multi-page invoice — all pages shown. Total and qty are usually on the last page. vendor = company selling TO Cee Kay.';
+  const prompt='Return ONLY a JSON object. No text before or after. No markdown. {"vendor":"company selling TO Cee Kay (not Cee Kay itself)","date":"MM/DD/YYYY","invoice_number":"invoice number","boxes":null,"total":"$0.00","qty_shipped":null} Multi-page invoice — all pages included. Fill in real values. boxes = total carton count. total = final net amount on last page.';
+  const systemPrompt = 'You are a JSON extraction assistant. You ONLY output valid JSON objects. Never output explanations, apologies, or any text outside the JSON object.';
   const content = [];
   for(let pi=0; pi<pages.length; pi++){
     const page = pages[pi];
@@ -1282,7 +1283,7 @@ async function callClaudeMultiImage(pages){
     method:'POST',
     headers:{'Content-Type':'application/json','x-api-key':getKey(),
       'anthropic-version':'2023-06-01','anthropic-dangerous-direct-browser-access':'true'},
-    body:JSON.stringify({model:'claude-sonnet-4-20250514',max_tokens:800,messages:[{role:'user',content}]})
+    body:JSON.stringify({model:'claude-sonnet-4-20250514',max_tokens:800,system:systemPrompt,messages:[{role:'user',content}]})
   });
   if(!r.ok){
     const eb=await r.json().catch(()=>({error:{message:'HTTP '+r.status}}));
@@ -1594,15 +1595,17 @@ async function callClaude(file){
   const b64=await toB64(file);
   const rawMime=file.type||'';
   const mime=rawMime.startsWith('image/')?sanitizeMime(rawMime):'application/pdf';
-  const prompt='Extract invoice summary data and return ONLY a JSON object (no markdown, no explanation).\nFormat: {"vendor":"seller/supplier name (never Cee Kay)","date":"MM/DD/YYYY","invoice_number":"exact invoice number","boxes":"total carton/box count as integer or null","total":"final net total e.g. $1,234.56","qty_shipped":"total quantity of individual items/pieces shipped as integer — look for Total Qty, Total Qty (pcs), Total Pieces, or sum QTY SHIPPED column. null if not determinable"}\nFor multi-page invoices the total and qty are on the last page. vendor = the company selling TO Cee Kay.';
+  const prompt='Return ONLY a JSON object. No text before or after. No markdown. {"vendor":"company selling TO Cee Kay (not Cee Kay itself)","date":"MM/DD/YYYY","invoice_number":"invoice number","boxes":null,"total":"$0.00","qty_shipped":null} Fill in real values from the invoice. boxes = total carton/box count as integer. total = final net amount. vendor = supplier name.';
+  const systemPrompt = 'You are a JSON extraction assistant. You ONLY output valid JSON objects. Never output explanations, apologies, or any text outside the JSON object.';
   let lastErr='';
-  for(let attempt=1;attempt<=2;attempt++){
+  for(let attempt=1;attempt<=3;attempt++){
     try{
       const r=await fetch('https://api.anthropic.com/v1/messages',{
         method:'POST',
         headers:{'Content-Type':'application/json','x-api-key':getKey(),
           'anthropic-version':'2023-06-01','anthropic-dangerous-direct-browser-access':'true'},
         body:JSON.stringify({model:'claude-sonnet-4-20250514',max_tokens:800,
+          system: systemPrompt,
           messages:[{role:'user',content:
             mime.startsWith('image/')
               ? [{type:'image',source:{type:'base64',media_type:mime,data:b64}},{type:'text',text:prompt}]
@@ -3181,20 +3184,11 @@ function saveChangePIN(){
   const userName = pinUsers[_changePinIndex]?.name;
   pinUsers[_changePinIndex].pin = newPin;
   savePinUsers();
-  // Force close modal by directly hiding it
-  // Hard close the modal
-  const mod = document.getElementById('changePinMod');
-  if(mod){
-    mod.classList.remove('show');
-    mod.style.setProperty('opacity','0','important');
-    mod.style.setProperty('pointer-events','none','important');
-    mod.style.setProperty('display','none','important');
-    setTimeout(()=>{ mod.style.removeProperty('display'); },500);
-  }
+  closeM('changePinMod');
   toast('PIN updated for '+userName,'ok');
-  setTimeout(()=>renderSettings(), 200);
+  renderSettings();
   if(isMe){
-    setTimeout(()=>{ toast('Log in with your new PIN','ok'); pinLogout(); }, 1800);
+    setTimeout(()=>{ toast('Log in with your new PIN','ok'); pinLogout(); }, 1500);
   }
 }
 
