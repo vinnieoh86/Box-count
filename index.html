@@ -689,7 +689,15 @@ async function sbSaveInvoices(){
 }
 
 async function sbDeleteInvoice(id){
-  await supa.from('invoices').delete().eq('id', String(id).replace(/\./g,'_'));
+  // Try both formats - old float-based and new inv_ prefix
+  const safeId = String(id).replace(/\./g,'_');
+  const invId = 'inv_' + id;
+  await supa.from('invoices').delete().in('id', [safeId, invId, String(id)]);
+}
+
+async function sbClearAll(){
+  // Delete every row from Supabase invoices table
+  await supa.from('invoices').delete().neq('id','__never__');
 }
 
 async function sbSaveArchive(){
@@ -1152,12 +1160,25 @@ async function getFileLocal(id){
   } catch(e){ return null; }
 }
 
+// OPEN in new tab — for clicking invoice # link
 async function openLocalFile(idOrUrl, filename){
-  // Accept either 'local:safeId' or raw safeId
   const key = String(idOrUrl).replace('local:','').replace(/\./g,'_');
   const record = await getFileLocal(key);
-  if(!record){ toast('⚠️ PDF not on this device — must be opened on the laptop that uploaded it','wrn'); return; }
-  const blob = b64ToBlob(record.b64, record.type||'application/pdf');
+  if(!record){ toast('⚠️ PDF not on this device — open on the laptop that uploaded it','wrn'); return; }
+  const mime = record.type || (record.name&&record.name.endsWith('.pdf') ? 'application/pdf' : 'image/jpeg');
+  const blob = b64ToBlob(record.b64, mime);
+  const url = URL.createObjectURL(blob);
+  window.open(url, '_blank');
+  setTimeout(()=>URL.revokeObjectURL(url), 30000);
+}
+
+// DOWNLOAD to disk — for receiving/dashboard download buttons
+async function downloadLocalFile(idOrUrl, filename){
+  const key = String(idOrUrl).replace('local:','').replace(/\./g,'_');
+  const record = await getFileLocal(key);
+  if(!record){ toast('⚠️ PDF not on this device — open on the laptop that uploaded it','wrn'); return false; }
+  const mime = record.type || 'application/pdf';
+  const blob = b64ToBlob(record.b64, mime);
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
   a.href = url;
@@ -1166,6 +1187,7 @@ async function openLocalFile(idOrUrl, filename){
   a.click();
   document.body.removeChild(a);
   setTimeout(()=>URL.revokeObjectURL(url), 5000);
+  return true;
 }
 
 function b64ToBlob(b64, type){
@@ -1209,34 +1231,30 @@ async function processFiles(files, overrideDelay=null){
     items[i].classList.add('going');
     lbl.textContent=`Processing: ${files[i].name}`;cnt.textContent=`${i}/${files.length}`;
     try{
-      // ── PRE-CHECK: skip by filename before spending API credits ──
-      const fnDup=invoices.some(x=>x.filename===files[i].name);
-      if(fnDup){
+      // ── Always parse via API first, then check duplicates ──
+      const res=await callClaude(files[i]);
+      res.vendor=applyAlias(res.vendor);
+      // Check duplicate by invoice number
+      const invDup=res.invoice_number&&invoices.some(x=>x.invoice_number===res.invoice_number);
+      if(invDup){
         items[i].className='pi skip';
-        items[i].innerHTML=`<span>⟳</span><span>${files[i].name} — skipped (already uploaded)</span>`;
+        items[i].innerHTML=`<span>⟳</span><span>${files[i].name} — skipped (invoice # already exists)</span>`;
         skipped++;
       }else{
-        // ── Only call API if file hasn't been seen before ──
-        const res=await callClaude(files[i]);
-        res.vendor=applyAlias(res.vendor);
-        // Secondary check by invoice number (catches renamed files)
-        const invDup=res.invoice_number&&invoices.some(x=>x.invoice_number===res.invoice_number);
-        if(invDup){
-          items[i].className='pi skip';
-          items[i].innerHTML=`<span>⟳</span><span>${files[i].name} — skipped (invoice # already exists)</span>`;skipped++;
-        }else{
-          const id=Date.now()+Math.random();
-          const safeId = String(id).replace(/\./g,'_');
-          const fileUrl = await uploadToStorage(files[i], safeId);
-          invoices.push({...res,id,addedAt:new Date().toISOString(),filename:files[i].name,
-            fileUrl: fileUrl||'',
-            qty_shipped: res.qty_shipped||'',
-            rcv1:'',rcv1ts:'',rcv2:'',rcv2ts:'',rcv3:'',rcv3ts:''});
-          newIds.add(id);
-          items[i].className='pi done';
-          items[i].innerHTML=`<span>✓</span><span>${files[i].name} — <strong>${res.vendor}</strong> · ${res.total}</span>`;added++;
-          renderTbl();updateStats();
-        }
+        // Generate guaranteed unique ID using index + timestamp + random
+        const id = Date.now() + (i * 1000) + Math.floor(Math.random()*999);
+        const safeId = 'inv_' + id;
+        // Save file to IndexedDB FIRST before anything else
+        const fileUrl = await uploadToStorage(files[i], safeId);
+        invoices.push({...res,id,addedAt:new Date().toISOString(),filename:files[i].name,
+          fileUrl: fileUrl||'',
+          qty_shipped: res.qty_shipped||'',
+          rcv1:'',rcv1ts:'',rcv2:'',rcv2ts:'',rcv3:'',rcv3ts:''});
+        newIds.add(id);
+        items[i].className='pi done';
+        items[i].innerHTML=`<span>✓</span><span>${files[i].name} — <strong>${res.vendor}</strong> · ${res.total}</span>`;
+        added++;
+        renderTbl();updateStats();
       }
     }catch(e){
       items[i].className='pi err';
@@ -1659,7 +1677,7 @@ function saveEdit(){
 // ─── DELETE ───────────────────────────────────────────────────────────────────
 function askDel(id,name){pendingDel=id;document.getElementById('delMsg').textContent=`Remove "${name}" from the tracker?`;openM('delMod');}
 function doDelete(){const _id=pendingDel;invoices=invoices.filter(x=>String(x.id)!==String(_id));pendingDel=null;localStorage.setItem('ck_inv',JSON.stringify(invoices));sbDeleteInvoice(_id);renderTbl();updateStats();closeM('delMod');toast('Invoice removed','wrn');}
-function doClear(){const n=invoices.length;if(!n){closeM('clearMod');return;}invoices=[];save();renderTbl();updateStats();document.getElementById('exportBtn').disabled=true;closeM('clearMod');toast(`${n} invoice${n!==1?'s':''} cleared`,'wrn');}
+function doClear(){const n=invoices.length;if(!n){closeM('clearMod');return;}invoices=[];localStorage.setItem('ck_inv','[]');sbClearAll();renderTbl();updateStats();document.getElementById('exportBtn').disabled=true;closeM('clearMod');toast(`${n} invoice${n!==1?'s':''} cleared`,'wrn');}
 
 // ─── STATS ────────────────────────────────────────────────────────────────────
 function updateStats(){
@@ -1902,19 +1920,8 @@ async function exportWeekPDFs(wkKey){
   for(let i=0;i<targets.length;i++){
     const t = targets[i];
     if(!t.dataset.url) continue;
-    const invoiceId = t.dataset.url.replace('local:','');
-    const record = await getFileLocal(invoiceId);
-    if(!record){ continue; }
-    const blob = b64ToBlob(record.b64, record.type||'application/pdf');
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = t.dataset.name || record.name || 'invoice.pdf';
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    setTimeout(()=>URL.revokeObjectURL(url), 5000);
-    downloaded++;
+    const ok = await downloadLocalFile(t.dataset.url, t.dataset.name || 'invoice.pdf');
+    if(ok) downloaded++;
     if(i < targets.length-1) await sleep(400);
   }
   if(downloaded === 0) toast('⚠️ Files not on this device — re-upload from this laptop','wrn');
