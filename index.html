@@ -487,7 +487,7 @@ tbody tr:hover .delbtn,tbody tr:hover .editbtn{opacity:1;}
 
   <div class="sbar">
     <div class="sc sc-accent"><div class="sl">Total Invoices</div><div class="sv" id="sCount">0</div></div>
-    <div class="sc"><div class="sl">Total Amount</div><div class="sv" style="font-size:19px" id="sTotal">$0.00</div></div>
+    <div class="sc" id="sTotalCard"><div class="sl">Total Amount</div><div class="sv" style="font-size:19px" id="sTotal">$0.00</div></div>
     <div class="sc"><div class="sl">Vendors</div><div class="sv" id="sVend">0</div></div>
     <div class="sc"><div class="sl">Last Updated</div><div class="sv sm" id="sDate">—</div></div>
   </div>
@@ -1983,35 +1983,40 @@ async function compressImageIfNeeded(file){
 function sleep(ms){return new Promise(r=>setTimeout(r,ms));}
 
 
-// ─── RCV OVERRIDE (manager/admin unlocks a locked RCV cell) ──────────────────
+// ─── RCV OVERRIDE (PIN prompt to unlock a locked RCV cell) ───────────────────
+let _overridePending = null; // {invId, field}
+
 function rcvOverride(invId, field){
-  if(!currentUser || (currentUser.role!=='admin' && currentUser.role!=='manager')){
-    toast('Manager or Admin access required to override','wrn'); return;
-  }
-  const inv = invoices.find(x=>String(x.id)===String(invId));
-  if(!inv) return;
-  // Find the locked input and unlock it
-  const row = document.querySelector(`tr [data-id="${safeId(invId)}"][data-field="${field}"]`);
-  if(!row) return;
-  const inp = row.closest('.wrec-cell')?.querySelector('input') || row;
-  if(!inp) return;
-  // Unlock it
+  const canOverride = currentUser && (currentUser.role==='admin' || currentUser.role==='manager' || currentUser.role==='secondary');
+  if(!canOverride){ toast('Admin, Manager or Secondary access required to override','wrn'); return; }
+  // Show PIN overlay in override mode
+  _overridePending = {invId, field};
+  const sub = document.getElementById('pinSub');
+  if(sub) sub.textContent = '🔓 Enter your PIN to override RCV value';
+  pinBuffer = ''; updatePinDots();
+  document.getElementById('pinError').textContent = '';
+  document.getElementById('pinOverlay').classList.remove('hidden');
+}
+
+function _doRcvUnlock(invId, field){
+  const inp = document.querySelector(`.wrec-inp[data-id="${CSS.escape(String(invId))}"][data-field="${field}"]`);
+  if(!inp) { toast('Could not find input to unlock','wrn'); return; }
   inp.disabled = false;
   inp.style.background = '';
   inp.style.borderColor = '';
   inp.style.color = '';
   inp.style.fontWeight = '';
   inp.style.cursor = '';
-  inp.style.opacity = '';
+  inp.style.opacity = '1';
   inp.classList.add('rcv-inp');
   inp.onchange = function(){ handleRcvDash(invId, field, this.value); };
   inp.onkeydown = function(e){ rcvKeyDown(e, this); };
   inp.onfocus = function(){ this.select(); };
-  // Hide the lock icon
-  const lockIcon = inp.nextElementSibling;
-  if(lockIcon) lockIcon.style.display = 'none';
+  // Hide the unlock button and lock icon next to it
+  const cell = inp.closest('.wrec-cell');
+  if(cell){ const btns = cell.querySelectorAll('button,span'); btns.forEach(b=>b.style.display='none'); }
   inp.focus(); inp.select();
-  toast(`🔓 ${field.toUpperCase()} unlocked by ${currentUser.name} — edit and confirm`, 'ok');
+  toast(`🔓 RCV unlocked by ${currentUser.name} — edit and press Enter to save`, 'ok');
 }
 
 // ─── RECEIVED HANDLER ─────────────────────────────────────────────────────────
@@ -2255,7 +2260,7 @@ function renderTbl(){
       <td style="white-space:nowrap">${invLink}${x.fileUrl?` <button onclick="exportItemizedExcel('${x.id}')" title="Download itemized Excel" style="background:none;border:none;cursor:pointer;font-size:14px;padding:0 2px;vertical-align:middle">📊</button>`:''}</td>
       <td><div class="fname" title="${esc(x.filename||'')}">${x.filename?'📎 '+esc(x.filename.length>20?x.filename.substring(0,18)+'…':x.filename):'—'}</div></td>
       <td style="text-align:center">${boxInputHtml(x.id, boxes,'invoice')}</td>
-      <td style="text-align:right;font-family:'Fraunces',serif;font-weight:700">${esc(x.total||'—')}</td>
+      <td style="text-align:right;font-family:'Fraunces',serif;font-weight:700">${canSeePrices() ? esc(x.total||'—') : '—'}</td>
       <td style="text-align:center">${badge}</td>
       <td style="text-align:center;white-space:nowrap">
         <button onclick="openEdit('${x.id}')" style="background:var(--surface2);border:1px solid var(--border2);border-radius:5px;padding:4px 10px;cursor:pointer;font-size:12px;margin-right:4px">✏️ Edit</button>
@@ -2266,7 +2271,7 @@ function renderTbl(){
   html+=`<tr class="tot-row">
     <td colspan="4" style="font-size:11px;color:var(--text2)">TOTAL — ${data.length} invoice${data.length!==1?'s':''}</td>
     <td style="text-align:center;font-weight:600">${totalBoxes||'—'}</td>
-    <td style="text-align:right;font-weight:700;font-family:'Fraunces',serif">$${grand.toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2})}</td>
+    <td style="text-align:right;font-weight:700;font-family:'Fraunces',serif">${canSeePrices() ? '$'+grand.toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2}) : '—'}</td>
     <td colspan="2"></td>
   </tr>`;
   tbody.innerHTML=html;
@@ -2827,7 +2832,7 @@ function renderEmpWeekly(){
       const rcvInp=(f)=>{
         const val = x[f]||'';
         const isLocked = val!=='' && val!==0 && val!=='0';
-        const canOverride = currentUser && (currentUser.role==='admin' || currentUser.role==='manager');
+        const canOverride = currentUser && (currentUser.role==='admin' || currentUser.role==='manager' || currentUser.role==='secondary');
         if(isLocked){
           return `<div class="wrec-cell">
             <div style="display:flex;align-items:center;gap:3px">
@@ -2964,9 +2969,11 @@ function checkAutoArchive(){
       invoices: [...wk.invs]
     });
 
-    // Remove these invoices from active list
+    // Remove these invoices from active list AND from Supabase
     const archInvIds = new Set(wk.invs.map(x => String(x.id)));
     invoices = invoices.filter(x => !archInvIds.has(String(x.id)));
+    // Delete from Supabase invoices table so they don't come back on sync
+    wk.invs.forEach(x => sbDeleteInvoice(x.id));
     archiveCount++;
   });
 
@@ -3236,6 +3243,12 @@ function pinBackspace(){
 }
 
 function pinClear(){
+  if(_overridePending){
+    // User cancelled the override PIN prompt — go back to app
+    _overridePending = null;
+    document.getElementById('pinSub').textContent = 'Invoice Tracker — Enter your PIN';
+    document.getElementById('pinOverlay').classList.add('hidden');
+  }
   pinBuffer = '';
   updatePinDots();
   document.getElementById('pinError').textContent = '';
@@ -3251,6 +3264,27 @@ function checkPin(){
   // Find user by PIN
   const matched = pinUsers.find(u => u.pin === pinBuffer);
   if(matched){
+    // ── Override mode: PIN entered to unlock an RCV cell ──
+    if(_overridePending){
+      const canOverride = matched.role==='admin' || matched.role==='manager' || matched.role==='secondary';
+      if(!canOverride){
+        document.getElementById('pinError').textContent = 'That PIN does not have override access';
+        pinBuffer = ''; updatePinDots(); return;
+      }
+      document.getElementById('pinOverlay').classList.add('hidden');
+      document.getElementById('pinSub').textContent = 'Invoice Tracker — Enter your PIN';
+      pinBuffer = ''; updatePinDots();
+      const {invId, field} = _overridePending;
+      _overridePending = null;
+      // Temporarily set currentUser to the overrider for the toast message
+      const overrider = matched;
+      const prev = currentUser;
+      currentUser = overrider;
+      _doRcvUnlock(invId, field);
+      currentUser = prev; // restore original user
+      return;
+    }
+    // ── Normal login ──
     currentUser = matched;
     document.getElementById('pinOverlay').classList.add('hidden');
     document.getElementById('pinSub').textContent = 'Invoice Tracker — Enter your PIN';
@@ -3278,6 +3312,11 @@ function checkPin(){
   }
 }
 
+function canSeePrices(){
+  // Only admin can see dollar totals; secondary/stock/manager cannot
+  return !currentUser || currentUser.role === 'admin';
+}
+
 function applyRoleRestrictions(role){
   // Reset all tabs visible first
   document.querySelectorAll('.tab-btn').forEach(t=>t.style.display='');
@@ -3286,6 +3325,9 @@ function applyRoleRestrictions(role){
   if(aliasBtn) aliasBtn.style.display='';
   // Settings tab — only admin and secondary
   const settingsTab = document.getElementById('settingsTab');
+  // Show/hide Total Amount stat card based on role
+  const sTotalCard = document.getElementById('sTotalCard');
+  if(sTotalCard) sTotalCard.style.display = (role === 'admin') ? '' : 'none';
 
   if(role === 'stock' || role === 'manager'){
     ['invoices','dashboard','archive'].forEach(name=>{
@@ -3310,6 +3352,7 @@ function applyRoleRestrictions(role){
 
 function pinLogout(){
   clearTimeout(_idleTimer);
+  _overridePending = null; // cancel any pending override
   sessionStorage.removeItem('ck_session'); // clear so re-login required
   currentUser = null;
   pinBuffer = '';
