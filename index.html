@@ -846,6 +846,7 @@ async function sbSaveInvoices(){
     rcv3ts: x.rcv3ts||'',
     rcv3by: x.rcv3by||'',
     uploaded_by: x.uploadedBy||'',
+    manual_status: x.manualStatus||'',
   }));
   const {error} = await supa.from('invoices').upsert(rows, {onConflict:'id'});
   if(error) console.error('Supabase save error:', error.message);
@@ -883,7 +884,10 @@ async function sbLoadAll(){
     const {data:inv, error:e1} = await supa.from('invoices').select('*').order('added_at',{ascending:false});
     if(e1) throw e1;
     if(inv && inv.length){
-      invoices = inv.map(r=>({
+      // Build set of already-archived invoice IDs to exclude from active list
+      const archivedIds = new Set();
+      archived.forEach(wk => wk.invoices.forEach(x => archivedIds.add(String(x.id))));
+      invoices = inv.filter(r => !archivedIds.has(String(r.id))).map(r=>({
         id:r.id, vendor:r.vendor, date:r.date,
         invoice_number:r.invoice_number, filename:r.filename,
         fileUrl:r.file_url||'',
@@ -896,6 +900,7 @@ async function sbLoadAll(){
         rcv2:r.rcv2||'', rcv2ts:r.rcv2ts||'', rcv2by:r.rcv2by||'',
         rcv3:r.rcv3||'', rcv3ts:r.rcv3ts||'', rcv3by:r.rcv3by||'',
         uploadedBy:r.uploaded_by||'',
+        manualStatus:r.manual_status||null,
       }));
     }
     const {data:arch} = await supa.from('archived_weeks').select('*');
@@ -1987,36 +1992,81 @@ function sleep(ms){return new Promise(r=>setTimeout(r,ms));}
 let _overridePending = null; // {invId, field}
 
 function rcvOverride(invId, field){
-  const canOverride = currentUser && (currentUser.role==='admin' || currentUser.role==='manager' || currentUser.role==='secondary');
-  if(!canOverride){ toast('Admin, Manager or Secondary access required to override','wrn'); return; }
-  // Show PIN overlay in override mode
+  // ANY user can click the lock — PIN prompt always shows
+  // Only admin/secondary/manager PINs will be accepted
   _overridePending = {invId, field};
   const sub = document.getElementById('pinSub');
-  if(sub) sub.textContent = '🔓 Enter your PIN to override RCV value';
+  if(sub) sub.textContent = '🔓 Enter Admin or Manager PIN to override';
   pinBuffer = ''; updatePinDots();
   document.getElementById('pinError').textContent = '';
   document.getElementById('pinOverlay').classList.remove('hidden');
 }
 
 function _doRcvUnlock(invId, field){
-  const inp = document.querySelector(`.wrec-inp[data-id="${CSS.escape(String(invId))}"][data-field="${field}"]`);
-  if(!inp) { toast('Could not find input to unlock','wrn'); return; }
+  // Find by data attributes
+  let inp = null;
+  document.querySelectorAll('.wrec-inp').forEach(el=>{
+    if(String(el.dataset.id)===String(invId) && el.dataset.field===field) inp = el;
+  });
+  if(!inp){ toast('Could not find input — try scrolling to it first','wrn'); return; }
+
+  // Capture the existing value BEFORE anything touches the input
+  const existingVal = inp.value;
+
+  // Unlock
   inp.disabled = false;
-  inp.style.background = '';
-  inp.style.borderColor = '';
-  inp.style.color = '';
-  inp.style.fontWeight = '';
-  inp.style.cursor = '';
+  inp.style.background = '#fef9c3';
+  inp.style.borderColor = '#fbbf24';
+  inp.style.color = 'var(--text)';
+  inp.style.fontWeight = '600';
+  inp.style.cursor = 'text';
   inp.style.opacity = '1';
   inp.classList.add('rcv-inp');
-  inp.onchange = function(){ handleRcvDash(invId, field, this.value); };
-  inp.onkeydown = function(e){ rcvKeyDown(e, this); };
-  inp.onfocus = function(){ this.select(); };
-  // Hide the unlock button and lock icon next to it
+
+  // Restore value explicitly — some browsers clear it on enable
+  inp.value = existingVal;
+  // Set _lastVal so rcvKeyDown doesn't fire a phantom save on Enter
+  inp._lastVal = existingVal;
+
+  // Wire up handlers
+  inp.onchange = function(){
+    handleRcvDash(invId, field, this.value);
+    // Re-lock visually after save
+    this.style.background = 'var(--green-dim)';
+    this.style.borderColor = '#86efac';
+    this.style.color = 'var(--green)';
+    this.disabled = true;
+    this._lastVal = this.value;
+    const lockBtn = this.closest('.wrec-cell')?.querySelector('button');
+    if(lockBtn){ lockBtn.textContent='🔒'; lockBtn.style.opacity='0.6'; lockBtn.onclick=function(){ rcvOverride(invId,field); }; }
+  };
+  inp.onkeydown = function(e){
+    if(e.key==='Enter'){ e.preventDefault(); this.blur(); }
+    else if(e.key==='Escape'){ 
+      // Cancel — restore original value and re-lock without saving
+      this.value = existingVal;
+      this.disabled = true;
+      this.style.background = 'var(--green-dim)';
+      this.style.borderColor = '#86efac';
+      this.style.color = 'var(--green)';
+      const lockBtn = this.closest('.wrec-cell')?.querySelector('button');
+      if(lockBtn){ lockBtn.textContent='🔒'; lockBtn.style.opacity='0.6'; lockBtn.onclick=function(){ rcvOverride(invId,field); }; }
+      toast('Override cancelled — original value kept','wrn');
+    }
+  };
+  // onfocus just selects without clearing
+  inp.onfocus = null;
+
+  // Change lock button to show unlocked state
   const cell = inp.closest('.wrec-cell');
-  if(cell){ const btns = cell.querySelectorAll('button,span'); btns.forEach(b=>b.style.display='none'); }
-  inp.focus(); inp.select();
-  toast(`🔓 RCV unlocked by ${currentUser.name} — edit and press Enter to save`, 'ok');
+  if(cell){
+    const lockBtn = cell.querySelector('button');
+    if(lockBtn){ lockBtn.textContent='🔓'; lockBtn.style.opacity='1'; lockBtn.style.cursor='default'; lockBtn.onclick=null; }
+  }
+
+  // Focus and select the existing value so user can type immediately
+  setTimeout(()=>{ inp.focus(); inp.setSelectionRange(0, inp.value.length); }, 30);
+  toast(`🔓 RCV unlocked — showing original value. Type new value then press Enter. Esc to cancel.`, 'ok');
 }
 
 // ─── RECEIVED HANDLER ─────────────────────────────────────────────────────────
@@ -2193,14 +2243,27 @@ function calcRem(inv){
   if(!b) return null;
   return b-calcRcvd(inv);
 }
+
+// ─── MANUAL STATUS OVERRIDE (admin only) ─────────────────────────────────────
+function setManualStatus(id, val){
+  if(!currentUser || currentUser.role !== 'admin'){ toast('Admin only','wrn'); return; }
+  const inv = invoices.find(x=>String(x.id)===String(id));
+  if(!inv) return;
+  inv.manualStatus = val || null; // null = auto
+  save();
+  renderTbl(); updateStats();
+  toast('Status updated','ok');
+}
+
 function getStatus(inv){
+  if(inv.manualStatus) return inv.manualStatus; // admin override takes priority
   const b=toNum(inv.boxes);
-  if(!b) return 'pending';              // no box count = PENDING
+  if(!b) return 'pending';
   const rcvd=calcRcvd(inv);
-  if(rcvd===0)  return 'pending';       // nothing received = PENDING
-  if(rcvd>b)    return 'overage';       // too many = OVERAGE
-  if(rcvd===b)  return 'complete';      // exact match = COMPLETE
-  return 'partial';                      // some received = PARTIAL
+  if(rcvd===0)  return 'pending';
+  if(rcvd>b)    return 'overage';
+  if(rcvd===b)  return 'complete';
+  return 'partial';
 }
 function setRemCell(cell,rem,inv){
   const b=parseFloat(inv.boxes)||0;
@@ -2261,7 +2324,15 @@ function renderTbl(){
       <td><div class="fname" title="${esc(x.filename||'')}">${x.filename?'📎 '+esc(x.filename.length>20?x.filename.substring(0,18)+'…':x.filename):'—'}</div></td>
       <td style="text-align:center">${boxInputHtml(x.id, boxes,'invoice')}</td>
       <td style="text-align:right;font-family:'Fraunces',serif;font-weight:700">${canSeePrices() ? esc(x.total||'—') : '—'}</td>
-      <td style="text-align:center">${badge}</td>
+      <td style="text-align:center">${currentUser?.role==='admin'
+        ? `<select onchange="setManualStatus('${x.id}',this.value)" style="padding:3px 6px;border:1px solid var(--border2);border-radius:5px;font-size:11px;font-family:Inter,sans-serif;background:var(--surface);cursor:pointer">
+            <option value="" ${!x.manualStatus?'selected':''}>Auto</option>
+            <option value="pending" ${x.manualStatus==='pending'?'selected':''}>Pending</option>
+            <option value="partial" ${x.manualStatus==='partial'?'selected':''}>Partial</option>
+            <option value="complete" ${x.manualStatus==='complete'?'selected':''}>Complete</option>
+            <option value="overage" ${x.manualStatus==='overage'?'selected':''}>Overage</option>
+           </select>`
+        : badge}</td>
       <td style="text-align:center;white-space:nowrap">
         <button onclick="openEdit('${x.id}')" style="background:var(--surface2);border:1px solid var(--border2);border-radius:5px;padding:4px 10px;cursor:pointer;font-size:12px;margin-right:4px">✏️ Edit</button>
         <button class="delbtn" onclick="askDel('${x.id}','${esc((x.vendor||'').replace(/'/g,"\'"))}')">✕</button>
@@ -2841,7 +2912,7 @@ function renderEmpWeekly(){
                 data-field="${f}" data-id="${x.id}"
                 disabled
                 style="background:var(--green-dim);border-color:#86efac;color:var(--green);font-weight:600;opacity:1;cursor:not-allowed" />
-              ${canOverride ? `<button title="Override (manager)" onclick="rcvOverride('${x.id}','${f}')" style="background:none;border:none;cursor:pointer;font-size:13px;padding:2px;opacity:0.6" onmouseover="this.style.opacity=1" onmouseout="this.style.opacity=0.6">🔓</button>` : `<span title="Locked — manager required" style="font-size:11px;cursor:default;opacity:0.4">🔒</span>`}
+              <button title="Locked — click to request override" onclick="rcvOverride('${x.id}','${f}')" style="background:none;border:none;cursor:pointer;font-size:13px;padding:2px;opacity:0.6" onmouseover="this.style.opacity=1" onmouseout="this.style.opacity=0.6">🔒</button>
             </div>
             <div class="wrec-ts">${esc(x[f+'ts']||'')}${x[f+'by']?` <span style="color:#60a5fa;font-size:9px">${esc(x[f+'by'])}</span>`:''}</div>
           </div>`;
@@ -2973,7 +3044,15 @@ function checkAutoArchive(){
     const archInvIds = new Set(wk.invs.map(x => String(x.id)));
     invoices = invoices.filter(x => !archInvIds.has(String(x.id)));
     // Delete from Supabase invoices table so they don't come back on sync
-    wk.invs.forEach(x => sbDeleteInvoice(x.id));
+    // Use bulk delete for reliability
+    wk.invs.forEach(x => {
+      const rawId = String(x.id);
+      const safeId = rawId.replace(/\./g,'_');
+      const invId = rawId.startsWith('inv_') ? rawId : 'inv_' + rawId;
+      supa.from('invoices').delete().in('id', [rawId, safeId, invId]).then(({error})=>{
+        if(error) console.warn('Archive delete error:', error.message, rawId);
+      });
+    });
     archiveCount++;
   });
 
@@ -3266,9 +3345,10 @@ function checkPin(){
   if(matched){
     // ── Override mode: PIN entered to unlock an RCV cell ──
     if(_overridePending){
+      // Accept admin, secondary, or manager PINs for override
       const canOverride = matched.role==='admin' || matched.role==='manager' || matched.role==='secondary';
       if(!canOverride){
-        document.getElementById('pinError').textContent = 'That PIN does not have override access';
+        document.getElementById('pinError').textContent = 'That PIN does not have override permission';
         pinBuffer = ''; updatePinDots(); return;
       }
       document.getElementById('pinOverlay').classList.add('hidden');
@@ -3343,7 +3423,7 @@ function applyRoleRestrictions(role){
   } else if(role === 'secondary'){
     const dashTab = document.querySelector('.tab-btn[onclick*="dashboard"]');
     if(dashTab) dashTab.style.display='none';
-    if(settingsTab) settingsTab.style.display='';
+    if(settingsTab) settingsTab.style.display='none'; // secondary: no settings
   } else {
     // Admin — show everything including settings
     if(settingsTab) settingsTab.style.display='';
