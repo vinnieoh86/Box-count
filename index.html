@@ -1025,11 +1025,6 @@ async function sbLoadAll(){
 
 // ─── STATE ────────────────────────────────────────────────────────────────────
 let invoices = JSON.parse(localStorage.getItem('ck_inv') || '[]');
-// Load aliases from localStorage on init (Supabase will overwrite in sbLoadAll)
-{
-  const localAliases = JSON.parse(localStorage.getItem('ck_aliases')||'null');
-  if(localAliases && localAliases.length) aliases = localAliases;
-}
 // Default aliases — these are the baseline. User changes are saved on top.
 const DEFAULT_ALIASES = [
   {from:'hair zone',       to:'Sensationnel'},
