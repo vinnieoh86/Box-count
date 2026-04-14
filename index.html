@@ -1025,6 +1025,23 @@ async function sbLoadAll(){
 
 // ─── STATE ────────────────────────────────────────────────────────────────────
 let invoices = JSON.parse(localStorage.getItem('ck_inv') || '[]');
+
+// ─── SYNC STATE FLAGS (declared early — used by sbSaveInvoices and sbLoadAll) ─
+let _lastSaveTime = 0;
+let _mergePending = false;
+let _uploadInProgress = false;
+const _dirtyIds = new Set();
+const _deletedIds = new Set(JSON.parse(localStorage.getItem('ck_deleted')||'[]'));
+function _markDeleted(id){
+  const sid = String(id).replace(/\./g,'_');
+  const prefId = sid.startsWith('inv_') ? sid : 'inv_'+sid;
+  [String(id), sid, prefId].forEach(x=>_deletedIds.add(x));
+  localStorage.setItem('ck_deleted', JSON.stringify([..._deletedIds]));
+  setTimeout(()=>{
+    [String(id), sid, prefId].forEach(x=>_deletedIds.delete(x));
+    localStorage.setItem('ck_deleted', JSON.stringify([..._deletedIds]));
+  }, 600000);
+}
 // Default aliases — these are the baseline. User changes are saved on top.
 const DEFAULT_ALIASES = [
   {from:'hair zone',       to:'Sensationnel'},
@@ -2254,11 +2271,13 @@ let _matchExpId = null;
 let _autoMatchPending = null; // {expId, invoiceIdx}
 
 function canManageExpected(){
-  return currentUser && (currentUser.role==='admin' || currentUser.role==='secondary' || currentUser.role==='manager');
+  if(!currentUser) return false;
+  return currentUser.role==='admin' || currentUser.role==='secondary';
+  // Stock = no access. Manager = no access (receiving only, no order management)
 }
 
 function openExpModal(){
-  if(!canManageExpected()){ toast('Admin or Secondary access required','wrn'); return; }
+  if(!canManageExpected()){ toast('Admin or Secondary access required to add expected orders','wrn'); return; }
   _expEditId = null;
   document.getElementById('exp-vendor-input').value = '';
   // Default to today
@@ -2971,26 +2990,7 @@ function boxInputHtml(invId, boxes, tab){
 // ─── AUTO SYNC ────────────────────────────────────────────────────────────────
 let _syncInterval = null;
 
-let _lastSaveTime = 0; // Track when we last saved a new invoice
-let _mergePending = false; // Block auto-sync while merge is in progress
-const _dirtyIds = new Set(); // Invoice IDs with unsaved local RCV changes
-// Track recently deleted IDs to prevent smart merge from re-adding them
-const _deletedIds = new Set(JSON.parse(localStorage.getItem('ck_deleted')||'[]'));
-function _markDeleted(id){
-  const sid = String(id).replace(/\./g,'_');
-  _deletedIds.add(sid);
-  _deletedIds.add(sid.startsWith('inv_') ? sid : 'inv_'+sid);
-  _deletedIds.add(String(id));
-  // Persist to localStorage so it survives refresh
-  localStorage.setItem('ck_deleted', JSON.stringify([..._deletedIds]));
-  // Auto-clear after 10 minutes (enough time for Supabase delete to propagate)
-  setTimeout(()=>{
-    _deletedIds.delete(sid);
-    _deletedIds.delete(sid.startsWith('inv_') ? sid : 'inv_'+sid);
-    _deletedIds.delete(String(id));
-    localStorage.setItem('ck_deleted', JSON.stringify([..._deletedIds]));
-  }, 600000);
-}
+
 
 function startAutoSync(){
   if(_syncInterval) return; // already running
@@ -3426,6 +3426,11 @@ function renderEmployee(){
   renderEmpAlerts();
   renderEmpKpi();
   renderEmpWeekly();
+  // Ensure Expected Order button shows/hides correctly based on current user
+  const addExpBtn = document.getElementById('addExpBtn');
+  if(addExpBtn && currentUser){
+    addExpBtn.style.display = (currentUser.role==='admin' || currentUser.role==='secondary') ? '' : 'none';
+  }
 }
 
 function renderEmpAlerts(){
@@ -4048,9 +4053,9 @@ function applyRoleRestrictions(role){
   // Show/hide Total Amount stat card based on role
   const sTotalCard = document.getElementById('sTotalCard');
   if(sTotalCard) sTotalCard.style.display = (role === 'admin') ? '' : 'none';
-  // Show/hide Expected Order button
+  // Show/hide Expected Order button — admin and secondary only
   const addExpBtn = document.getElementById('addExpBtn');
-  if(addExpBtn) addExpBtn.style.display = (role==='admin'||role==='secondary'||role==='manager') ? '' : 'none';
+  if(addExpBtn) addExpBtn.style.display = (role==='admin' || role==='secondary') ? '' : 'none';
 
   if(role === 'stock' || role === 'manager'){
     ['invoices','dashboard','archive'].forEach(name=>{
@@ -4090,6 +4095,8 @@ function pinLogout(){
   const aliasBtn = document.querySelector('[onclick*="aliasModal"]');
   if(aliasBtn) aliasBtn.style.display='';
   document.getElementById('adminBtn').style.display='none';
+  const addExpBtnLogout = document.getElementById('addExpBtn');
+  if(addExpBtnLogout) addExpBtnLogout.style.display='none';
   updatePinDots();
   document.getElementById('pinError').textContent='';
   document.getElementById('pinOverlay').classList.remove('hidden');
@@ -4318,7 +4325,7 @@ function resetIdleTimer(){
 // Processes one invoice at a time in background — never blocks UI
 const _itemizedQueue = [];
 let _itemizedRunning = false;
-let _uploadInProgress = false; // Pause itemized queue during uploads
+// _uploadInProgress declared early in STATE section
 
 async function runItemizedQueue(){
   if(_itemizedRunning) return;
