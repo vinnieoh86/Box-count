@@ -896,9 +896,17 @@ async function sbSaveArchive(){
 }
 
 async function sbSaveAliases(){
-  await supa.from('aliases').delete().neq('id', 0);
   if(!aliases.length) return;
-  await supa.from('aliases').insert(aliases.map(a=>({'from':a.from,'to':a.to})));
+  try{
+    // Upsert on 'from' field — no delete needed, no id column required
+    const {error} = await supa.from('aliases')
+      .upsert(aliases.map(a=>({'from':a.from,'to':a.to})), {onConflict:'from'});
+    if(error){
+      // Fallback: delete all then re-insert
+      await supa.from('aliases').delete().neq('from','__never__');
+      await supa.from('aliases').insert(aliases.map(a=>({'from':a.from,'to':a.to})));
+    }
+  }catch(e){ console.warn('Alias save error:', e.message); }
 }
 
 async function sbLoadAll(){
@@ -982,6 +990,8 @@ async function sbLoadAll(){
         const xId = String(x.id).replace(/\./g,'_');
         if(cloudIds.has(String(x.id)) || cloudIds.has(xId)) return false;
         if(archivedIds.has(String(x.id)) || archivedIds.has(xId)) return false;
+        // Never re-add deleted invoices
+        if(_deletedIds.has(String(x.id)) || _deletedIds.has(xId)) return false;
         return new Date(x.addedAt||0).getTime() > threeMinsAgo;
       });
 
@@ -1015,6 +1025,11 @@ async function sbLoadAll(){
 
 // ─── STATE ────────────────────────────────────────────────────────────────────
 let invoices = JSON.parse(localStorage.getItem('ck_inv') || '[]');
+// Load aliases from localStorage on init (Supabase will overwrite in sbLoadAll)
+{
+  const localAliases = JSON.parse(localStorage.getItem('ck_aliases')||'null');
+  if(localAliases && localAliases.length) aliases = localAliases;
+}
 // Default aliases — these are the baseline. User changes are saved on top.
 const DEFAULT_ALIASES = [
   {from:'hair zone',       to:'Sensationnel'},
@@ -1054,9 +1069,23 @@ function applyAlias(name){
   }
   return name;
 }
-function saveAliases(){
+function saveAliases(autoApply=true){
   localStorage.setItem('ck_aliases',JSON.stringify(aliases));
   sbSaveAliases();
+  // Auto-apply new alias to all existing invoices
+  if(autoApply && invoices.length){
+    let changed = 0;
+    invoices.forEach(inv=>{
+      const corrected = applyAlias(inv.vendor);
+      if(corrected && corrected !== inv.vendor){ inv.vendor = corrected; changed++; }
+    });
+    if(changed){
+      localStorage.setItem('ck_inv', JSON.stringify(invoices));
+      sbSaveInvoices().catch(()=>{});
+      renderTbl(); updateStats();
+      toast(`↺ Alias applied to ${changed} existing invoice${changed!==1?'s':''}`, 'ok');
+    }
+  }
 }
 function resetAliasesToDefault(){
   aliases = [...DEFAULT_ALIASES];
@@ -2421,7 +2450,7 @@ function checkAutoMatch(newInv){
     if(!_vendorMatch(invVendor, expVendor)) return false;
     const expDate = new Date(exp.date);
     if(isNaN(expDate)) return false;
-    return Math.abs(expDate - invDate) <= 4 * 86400000;
+    return Math.abs(expDate - invDate) <= 6 * 86400000; // ±6 day window
   });
 
   if(!candidates.length) return;
@@ -2950,6 +2979,23 @@ let _syncInterval = null;
 let _lastSaveTime = 0; // Track when we last saved a new invoice
 let _mergePending = false; // Block auto-sync while merge is in progress
 const _dirtyIds = new Set(); // Invoice IDs with unsaved local RCV changes
+// Track recently deleted IDs to prevent smart merge from re-adding them
+const _deletedIds = new Set(JSON.parse(localStorage.getItem('ck_deleted')||'[]'));
+function _markDeleted(id){
+  const sid = String(id).replace(/\./g,'_');
+  _deletedIds.add(sid);
+  _deletedIds.add(sid.startsWith('inv_') ? sid : 'inv_'+sid);
+  _deletedIds.add(String(id));
+  // Persist to localStorage so it survives refresh
+  localStorage.setItem('ck_deleted', JSON.stringify([..._deletedIds]));
+  // Auto-clear after 10 minutes (enough time for Supabase delete to propagate)
+  setTimeout(()=>{
+    _deletedIds.delete(sid);
+    _deletedIds.delete(sid.startsWith('inv_') ? sid : 'inv_'+sid);
+    _deletedIds.delete(String(id));
+    localStorage.setItem('ck_deleted', JSON.stringify([..._deletedIds]));
+  }, 600000);
+}
 
 function startAutoSync(){
   if(_syncInterval) return; // already running
@@ -3063,7 +3109,21 @@ function saveEdit(){
 
 // ─── DELETE ───────────────────────────────────────────────────────────────────
 function askDel(id,name){pendingDel=id;document.getElementById('delMsg').textContent=`Remove "${name}" from the tracker?`;openM('delMod');}
-function doDelete(){const _id=pendingDel;invoices=invoices.filter(x=>String(x.id)!==String(_id));pendingDel=null;localStorage.setItem('ck_inv',JSON.stringify(invoices));sbDeleteInvoice(_id);renderTbl();updateStats();closeM('delMod');toast('Invoice removed','wrn');}
+function doDelete(){
+  const _id = pendingDel;
+  pendingDel = null;
+  // Remove from memory
+  invoices = invoices.filter(x=>String(x.id)!==String(_id));
+  // Mark as deleted so smart merge never re-adds it
+  _markDeleted(_id);
+  // Save to localStorage immediately
+  localStorage.setItem('ck_inv', JSON.stringify(invoices));
+  // Delete from Supabase
+  sbDeleteInvoice(_id);
+  renderTbl(); updateStats();
+  closeM('delMod');
+  toast('Invoice removed','wrn');
+}
 function doClear(){const n=invoices.length;if(!n){closeM('clearMod');return;}invoices=[];localStorage.setItem('ck_inv','[]');sbClearAll();renderTbl();updateStats();document.getElementById('exportBtn').disabled=true;closeM('clearMod');toast(`${n} invoice${n!==1?'s':''} cleared`,'wrn');}
 
 // ─── STATS ────────────────────────────────────────────────────────────────────
@@ -4345,6 +4405,12 @@ updateKeyUI();
 
   // Then load Supabase — merge cloud data but preserve local RCV values
   const ok = await sbLoadAll();
+
+  // Remove any deleted invoices that came back from Supabase
+  invoices = invoices.filter(x=>{
+    const xId = String(x.id).replace(/\./g,'_');
+    return !_deletedIds.has(xId) && !_deletedIds.has(String(x.id));
+  });
 
   // After sbLoadAll, re-apply any local RCV values that are newer than cloud
   // (localStorage is always written before Supabase, so local is always >= cloud)
