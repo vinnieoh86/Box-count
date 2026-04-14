@@ -126,6 +126,18 @@ header{background:var(--navy);padding:0 32px;display:flex;align-items:stretch;ju
 .bd:hover{background:#fee2e2;}
 .modal-label{font-size:12px;font-weight:600;color:var(--text2);margin-bottom:6px;display:block;text-transform:uppercase;letter-spacing:.04em;}
 
+
+/* ── EXPECTED ORDERS ── */
+.exp-row{background:linear-gradient(90deg,#fffbeb,#fff) !important;border-left:3px solid #f59e0b !important;}
+.exp-row:hover{background:linear-gradient(90deg,#fef3c7,#fffbeb) !important;}
+.exp-badge{display:inline-flex;align-items:center;gap:4px;font-size:10px;font-weight:700;padding:3px 8px;border-radius:4px;background:#fef3c7;color:#92400e;border:1px solid #fcd34d;white-space:nowrap;}
+.exp-modal-overlay{position:fixed;inset:0;background:rgba(0,0,0,.45);backdrop-filter:blur(3px);z-index:500;display:flex;align-items:center;justify-content:center;}
+.exp-modal{background:var(--surface);border-radius:12px;padding:28px;width:min(94vw,460px);box-shadow:0 20px 60px rgba(0,0,0,.25);}
+.vendor-search{position:relative;}
+.vendor-dropdown{position:absolute;top:100%;left:0;right:0;background:#fff;border:1px solid var(--border2);border-radius:6px;max-height:200px;overflow-y:auto;z-index:600;box-shadow:0 4px 12px rgba(0,0,0,.12);}
+.vendor-opt{padding:8px 12px;font-size:13px;cursor:pointer;color:var(--text);}
+.vendor-opt:hover,.vendor-opt.active{background:var(--blue-dim);color:var(--navy);}
+.match-modal{background:var(--surface);border-radius:12px;padding:28px;width:min(94vw,500px);box-shadow:0 20px 60px rgba(0,0,0,.25);}
 /* ── DROP ZONE ── */
 .dz{border:2px dashed var(--border2);border-radius:10px;padding:44px 40px;text-align:center;cursor:pointer;transition:all .25s;margin-bottom:24px;background:var(--surface);}
 .dz:hover,.dz.over{border-color:var(--blue);background:var(--blue-dim);}
@@ -243,7 +255,8 @@ tbody tr:hover .delbtn,tbody tr:hover .editbtn{opacity:1;}
 .dfb.active{background:var(--blue-dim);border-color:var(--blue);color:var(--navy2);font-weight:600;}
 
 /* ── WEEKLY SECTIONS ── */
-.week-wrap{display:flex;flex-direction:column;gap:16px;}
+.week-wrap{display:flex;flex-direction:column;gap:0;}
+.week-sep{height:4px;background:linear-gradient(90deg,var(--navy),var(--blue),var(--navy));border-radius:0;margin:18px 0;opacity:0.5;}
 .week-sec{background:var(--surface);border:1px solid var(--border);border-radius:10px;overflow:hidden;box-shadow:var(--shadow);}
 .week-hdr{display:flex;align-items:center;justify-content:space-between;padding:12px 20px;background:var(--navy);flex-wrap:wrap;gap:8px;}
 .week-label{font-family:'Fraunces',serif;font-size:15px;color:#fff;font-weight:600;}
@@ -629,7 +642,10 @@ tbody tr:hover .delbtn,tbody tr:hover .editbtn{opacity:1;}
     <button class="fpill f-complete" onclick="setEmpFilter('complete',this)">Complete</button>
     <button class="fpill f-overage" onclick="setEmpFilter('overage',this)">Overage</button>
   </div>
-  <div class="emp-section-title">📦 Weekly Delivery Tracker <span>Enter received boxes below — updates save automatically</span></div>
+  <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;margin-bottom:8px">
+    <div class="emp-section-title" style="margin-bottom:0">📦 Weekly Delivery Tracker <span>Enter received boxes below — updates save automatically</span></div>
+    <button id="addExpBtn" onclick="openExpModal()" style="display:none;background:#f59e0b;color:#fff;border:none;padding:8px 16px;border-radius:7px;font-size:12px;font-weight:600;cursor:pointer;white-space:nowrap">🔶 + Expected Order</button>
+  </div>
   <div class="week-wrap" id="empWeekWrap"></div>
 
 </div>
@@ -826,6 +842,7 @@ const supa = supabase.createClient(SUPA_URL, SUPA_KEY);
 
 async function sbSaveInvoices(){
   if(!invoices.length) return;
+  const dirtySnapshot = new Set(_dirtyIds); // snapshot which IDs we're saving
   const rows = invoices.map(x=>({
     id: String(x.id).replace(/\./g,'_'),
     vendor: x.vendor||'', date: x.date||'',
@@ -849,7 +866,12 @@ async function sbSaveInvoices(){
     manual_status: x.manualStatus||'',
   }));
   const {error} = await supa.from('invoices').upsert(rows, {onConflict:'id'});
-  if(error) console.error('Supabase save error:', error.message);
+  if(error){
+    console.error('Supabase save error:', error.message);
+  } else {
+    // Clear dirty flags for IDs that were successfully saved
+    dirtySnapshot.forEach(id => _dirtyIds.delete(id));
+  }
 }
 
 async function sbDeleteInvoice(id){
@@ -881,13 +903,33 @@ async function sbSaveAliases(){
 
 async function sbLoadAll(){
   try{
+    // Load archived_weeks FIRST so we can filter them out of active invoices
+    const {data:arch} = await supa.from('archived_weeks').select('*');
+    if(arch && arch.length){
+      archived = arch.map(r=>({
+        weekKey:r.week_key, weekLabel:r.week_label,
+        archivedAt:r.archived_at, invoices:r.invoices||[]
+      }));
+    }
+    // Now load active invoices, filtering out any that are already archived
+    // Safety: never filter out invoices from the current week
+    const currentWkKey2 = getWkKey(new Date().toISOString().slice(0,10));
+    const archivedIds = new Set();
+    archived.forEach(wk => {
+      // Don't exclude invoices from current week even if somehow in archive
+      if(wk.weekKey === currentWkKey2) return;
+      wk.invoices.forEach(x => {
+        const id = String(x.id);
+        archivedIds.add(id);
+        archivedIds.add(id.replace(/^inv_/,''));
+        archivedIds.add('inv_'+id.replace(/^inv_/,''));
+        archivedIds.add(id.replace(/\./g,'_'));
+      });
+    });
     const {data:inv, error:e1} = await supa.from('invoices').select('*').order('added_at',{ascending:false});
     if(e1) throw e1;
-    if(inv && inv.length){
-      // Build set of already-archived invoice IDs to exclude from active list
-      const archivedIds = new Set();
-      archived.forEach(wk => wk.invoices.forEach(x => archivedIds.add(String(x.id))));
-      invoices = inv.filter(r => !archivedIds.has(String(r.id))).map(r=>({
+    if(inv && !_mergePending){
+      const freshFromCloud = inv.filter(r => !archivedIds.has(String(r.id))).map(r=>({
         id:r.id, vendor:r.vendor, date:r.date,
         invoice_number:r.invoice_number, filename:r.filename,
         fileUrl:r.file_url||'',
@@ -902,13 +944,48 @@ async function sbLoadAll(){
         uploadedBy:r.uploaded_by||'',
         manualStatus:r.manual_status||null,
       }));
-    }
-    const {data:arch} = await supa.from('archived_weeks').select('*');
-    if(arch && arch.length){
-      archived = arch.map(r=>({
-        weekKey:r.week_key, weekLabel:r.week_label,
-        archivedAt:r.archived_at, invoices:r.invoices||[]
-      }));
+      // Smart merge: always prefer local RCV values over cloud
+      // Local is written synchronously by save(), cloud lags by network latency
+      const cloudIds = new Set(freshFromCloud.map(x=>String(x.id)));
+      const localStorageInvoices = JSON.parse(localStorage.getItem('ck_inv')||'[]');
+
+      const merged = freshFromCloud.map(cloudInv => {
+        const cid = String(cloudInv.id).replace(/\./g,'_');
+        // Find matching local invoice (from memory or localStorage)
+        const localInv = invoices.find(x=>{
+          const xid = String(x.id).replace(/\./g,'_');
+          return xid===cid || xid.replace(/^inv_/,'')===cid.replace(/^inv_/,'');
+        }) || localStorageInvoices.find(x=>{
+          const xid = String(x.id).replace(/\./g,'_');
+          return xid===cid || xid.replace(/^inv_/,'')===cid.replace(/^inv_/,'');
+        });
+        if(!localInv) return cloudInv;
+        // Keep cloud data but prefer local RCV if local is non-zero
+        return {...cloudInv,
+          rcv1: localInv.rcv1||cloudInv.rcv1||'',
+          rcv1ts: localInv.rcv1ts||cloudInv.rcv1ts||'',
+          rcv1by: localInv.rcv1by||cloudInv.rcv1by||'',
+          rcv2: localInv.rcv2||cloudInv.rcv2||'',
+          rcv2ts: localInv.rcv2ts||cloudInv.rcv2ts||'',
+          rcv2by: localInv.rcv2by||cloudInv.rcv2by||'',
+          rcv3: localInv.rcv3||cloudInv.rcv3||'',
+          rcv3ts: localInv.rcv3ts||cloudInv.rcv3ts||'',
+          rcv3by: localInv.rcv3by||cloudInv.rcv3by||'',
+          manualStatus: localInv.manualStatus||cloudInv.manualStatus||null,
+          boxes: localInv.boxes||cloudInv.boxes,
+        };
+      });
+
+      // Also keep local-only invoices added in last 3 minutes (not in Supabase yet)
+      const threeMinsAgo = Date.now() - 180000;
+      const recentLocalOnly = invoices.filter(x=>{
+        const xId = String(x.id).replace(/\./g,'_');
+        if(cloudIds.has(String(x.id)) || cloudIds.has(xId)) return false;
+        if(archivedIds.has(String(x.id)) || archivedIds.has(xId)) return false;
+        return new Date(x.addedAt||0).getTime() > threeMinsAgo;
+      });
+
+      invoices = [...merged, ...recentLocalOnly];
     }
     const {data:al} = await supa.from('aliases').select('*');
     if(al && al.length){
@@ -1490,6 +1567,7 @@ function renameFile(file, newName){
 // ─── PROCESS ──────────────────────────────────────────────────────────────────
 async function processFiles(files, overrideDelay=null){
   if(!getKey()){openM('apiMod');toast('Enter your API key first','wrn');return;}
+  _uploadInProgress = true; // Pause background itemized queue
   const pw=document.getElementById('pw'),bar=document.getElementById('pb'),
         lbl=document.getElementById('pLbl'),cnt=document.getElementById('pCnt'),
         lst=document.getElementById('pl');
@@ -1507,8 +1585,11 @@ async function processFiles(files, overrideDelay=null){
       // ── Always parse via API first, then check duplicates ──
       const res=await callClaude(files[i]);
       res.vendor=applyAlias(res.vendor);
-      // Check duplicate by invoice number
-      const invDup=res.invoice_number&&invoices.some(x=>x.invoice_number===res.invoice_number);
+      // Check duplicate by invoice number — also check archived
+      const invDup=res.invoice_number&&(
+        invoices.some(x=>x.invoice_number===res.invoice_number) ||
+        archived.some(wk=>wk.invoices.some(x=>x.invoice_number===res.invoice_number))
+      );
       if(invDup){
         items[i].className='pi skip';
         items[i].innerHTML=`<span>⟳</span><span>${files[i].name} — skipped (invoice # already exists)</span>`;
@@ -1530,7 +1611,11 @@ async function processFiles(files, overrideDelay=null){
         items[i].className='pi done';
         items[i].innerHTML=`<span>✓</span><span>${files[i].name} — <strong>${res.vendor}</strong> · ${res.total}</span>`;
         added++;
+        save(); // Save immediately — don't wait for end of loop
         renderTbl();updateStats();
+        // Check for auto-match — wait longer to ensure Supabase has the invoice
+        const _savedInv = invoices[invoices.length-1];
+        setTimeout(()=>checkAutoMatch(_savedInv), 3000);
         // Queue background itemized parse — starts after main upload finishes
         _itemizedQueue.push({inv: invoices[invoices.length-1], idbKey: safeId});
       }
@@ -1549,8 +1634,8 @@ async function processFiles(files, overrideDelay=null){
     }
   }
   save();renderTbl();updateStats();
-  // Start background itemized parse for newly uploaded invoices
-  if(_itemizedQueue.length && !_itemizedRunning) setTimeout(runItemizedQueue, 500);
+  // Start background itemized parse — wait 30s after upload finishes
+  if(_itemizedQueue.length && !_itemizedRunning) setTimeout(runItemizedQueue, 30000);
 
   // Build summary
   const errors = Array.from(document.querySelectorAll('#pl .pi.err')).map(el=>el.querySelector('span:last-child').textContent);
@@ -1566,6 +1651,7 @@ async function processFiles(files, overrideDelay=null){
     toast(`✅ ${added} invoice${added!==1?'s':''} added${skipped?`, ${skipped} skipped`:''}`, 'ok');
   }
 
+  _uploadInProgress = false; // Resume background queue
   setTimeout(()=>{pw.classList.remove('show');bar.style.width='0%';lst.innerHTML='';newIds.clear();},errors.length?12000:7000);
 }
 
@@ -1593,8 +1679,17 @@ function showErrorPanel(errors, failedFilesArr, added, skipped){
     </div>
   `;
 
+  // Try invoice table first, then receiving tab fallback
   const card = document.querySelector('.card');
-  if(card) card.parentNode.insertBefore(panel, card);
+  const empWrap = document.getElementById('empWeekWrap');
+  const activePage = document.querySelector('.page.active');
+  if(card && activePage?.id === 'page-invoices'){
+    card.parentNode.insertBefore(panel, card);
+  } else if(empWrap){
+    empWrap.parentNode.insertBefore(panel, empWrap);
+  } else if(card){
+    card.parentNode.insertBefore(panel, card);
+  }
 }
 
 async function retryFailed(){
@@ -1619,7 +1714,7 @@ async function callClaude(file){
   const b64=await toB64(processedFile);
   const rawMime=processedFile.type||'';
   const mime=rawMime.startsWith('image/')?sanitizeMime(rawMime):'application/pdf';
-  const prompt='Return ONLY a JSON object. No text before or after. No markdown. {"vendor":"company selling TO Cee Kay (not Cee Kay itself)","date":"MM/DD/YYYY","invoice_number":"invoice number","boxes":null,"total":"$0.00","qty_shipped":null} Fill in real values from the invoice. boxes = total carton/box count as integer. total = final net amount. vendor = supplier name.';
+  const prompt='Return ONLY a JSON object. No text before or after. No markdown. {"vendor":"company selling TO Cee Kay (not Cee Kay itself)","date":"MM/DD/YYYY","invoice_number":"invoice number","boxes":null,"total":"$0.00","qty_shipped":null} Fill in real values from the invoice. boxes = total carton/box count as integer (null if not shown). total = final net dollar amount due. vendor = the seller/supplier name (NOT Cee Kay). invoice_number = the invoice or order reference number. If the document is in another language, still extract these fields from the numbers and context.';
   const systemPrompt = 'You are a JSON extraction assistant. You ONLY output valid JSON objects. Never output explanations, apologies, or any text outside the JSON object.';
   let lastErr='';
   const maxAttempts=5;
@@ -1641,9 +1736,9 @@ async function callClaude(file){
         const eb=await r.json().catch(()=>({error:{message:'HTTP '+r.status}}));
         const msg=eb.error?.message||'API error '+r.status;
         // 529 = Overloaded, 429 = Rate limit — both get exponential backoff
-        if((r.status===529||r.status===429)&&attempt<maxAttempts){
+        if((r.status===529||r.status===429||r.status===500||r.status===503)&&attempt<maxAttempts){
           const wait=Math.min(8000*Math.pow(2,attempt-1),60000); // 8s, 16s, 32s, 60s
-          toast(`⏳ API busy — retrying in ${Math.round(wait/1000)}s (attempt ${attempt}/${maxAttempts})…`,'wrn');
+          toast(`⏳ API error ${r.status} — retrying in ${Math.round(wait/1000)}s (attempt ${attempt}/${maxAttempts})…`,'wrn');
           await sleep(wait);
           continue;
         }
@@ -1755,14 +1850,20 @@ async function callItemizedAPI(rec, prompt){
   const contentItem = mime.startsWith('image/')
     ? {type:'image',source:{type:'base64',media_type:mime,data:rec.b64}}
     : {type:'document',source:{type:'base64',media_type:'application/pdf',data:rec.b64}};
-  const r = await fetch('https://api.anthropic.com/v1/messages',{
-    method:'POST',
-    headers:{'Content-Type':'application/json','x-api-key':getKey(),
-      'anthropic-version':'2023-06-01','anthropic-dangerous-direct-browser-access':'true'},
-    body:JSON.stringify({model:'claude-sonnet-4-20250514',max_tokens:16000,
-      system:'JSON extraction only. Output ONLY valid JSON. Never truncate the items array.',
-      messages:[{role:'user',content:[contentItem,{type:'text',text:prompt}]}]})
-  });
+  let r;
+  for(let _att=1;_att<=3;_att++){
+    r = await fetch('https://api.anthropic.com/v1/messages',{
+      method:'POST',
+      headers:{'Content-Type':'application/json','x-api-key':getKey(),
+        'anthropic-version':'2023-06-01','anthropic-dangerous-direct-browser-access':'true'},
+      body:JSON.stringify({model:'claude-sonnet-4-20250514',max_tokens:16000,
+        system:'JSON extraction only. Output ONLY valid JSON. Never truncate the items array.',
+        messages:[{role:'user',content:[contentItem,{type:'text',text:prompt}]}]})
+    });
+    if(r.ok) break;
+    if((r.status===529||r.status===500||r.status===429)&&_att<3){ await sleep(15000*_att); continue; }
+    const eb=await r.json().catch(()=>({})); throw new Error(eb.error?.message||'API '+r.status);
+  }
   if(!r.ok){ const eb=await r.json().catch(()=>({})); throw new Error(eb.error?.message||'API '+r.status); }
   const d = await r.json();
   const tb = d.content.find(b=>b.type==='text');
@@ -2064,9 +2165,416 @@ function _doRcvUnlock(invId, field){
     if(lockBtn){ lockBtn.textContent='🔓'; lockBtn.style.opacity='1'; lockBtn.style.cursor='default'; lockBtn.onclick=null; }
   }
 
-  // Focus and select the existing value so user can type immediately
-  setTimeout(()=>{ inp.focus(); inp.setSelectionRange(0, inp.value.length); }, 30);
+  // Focus and fully select the value so user can just type the new number immediately
+  // We temporarily switch to type=text to force full selection (number inputs ignore setSelectionRange in some browsers)
+  setTimeout(()=>{
+    inp.focus();
+    try {
+      inp.type = 'text';
+      inp.setSelectionRange(0, inp.value.length);
+      // Switch back to number after a brief moment
+      setTimeout(()=>{ inp.type = 'number'; }, 100);
+    } catch(e) {
+      inp.select();
+    }
+  }, 30);
   toast(`🔓 RCV unlocked — showing original value. Type new value then press Enter. Esc to cancel.`, 'ok');
+}
+
+
+// ─── EXPECTED ORDERS ──────────────────────────────────────────────────────────
+let expectedOrders = JSON.parse(localStorage.getItem('ck_expected')||'[]');
+
+// Master vendor list — pre-loaded + user additions stored in Supabase
+let vendorMaster = ["7UP","ABSOLUTE","ADVANCE DISTRIBUTORS","AFAM","ALICIA - KJ WHOLESALE","ANNIE","ASAD","AVIANCE","BBIM","BEAUTIFUL DAY TRADING","BEAUTY HAIR WHOLESALE","BEAUTY PLUS","BEBE GROUP","BEE SALES","BESHE","BIG MAMA","BKT TRADING","BLACK CALA","BLACK&BOSSIE","BLUE OCEAN","BOHYME","C&CC","C&L","CHADE","CLEARANCE","COSMO BEAUTY SUPPLY","DAMOA","DASO TRADING","DO NOT USE","DODO FASHION","DOLLAR","EBIN","ELTON","FASHION WORLD","FATHER AND DAUGHTER","FOXY SILVER","FRIES BRO","FRITOS","GABRIELLA","GALERIE","GNS TRADING","GOLDSTAR","GRACE IMPORT","GREIS","GRIP TIGHT","GRIPPO","H MART","H2PRO","HAIR HA","HAIR PLUS","HAIR SOUTH INC","HAIR TREND","HAIRLAND","HALF BUNDLE","HALO","HARLEM125","HEAVENLY SCENTS","HINES  & CLEAR","HUSMAN","HW BEAUTY PRO","ICE","ITS A WIG","J & A IMPORT","J CLASS","JC BEAUTY","JINNY BEAUTY","JK TRADING","JOBNOM","JOON TRADING DIETER TEA","JS BEAUTY EXPERT INC","JUJU COLLECTION","KARA HAIR FASHION","KIRGIN CORP","KISS","KLOSTERMAN","KN WHOLESALE","KOEM ENTERPRISES INC","KONEX","KROGER","LA GIRL","LAFLARE","LAUDIC","LEE JEWELRY","LENZ OUTLET","LITTLE DEBBIE","LOG IN APPAREL INC","LUV SPORTS","MANE CONCEPT","MASTERPIECE","MAYDE","MIAMI HAIR","MIDWAY","MINAM TRADING","MISA TRADING","MISS BOND","MISS LASHES","MISUNG","MONEY 4 U","MOTOWN ORADELL","NACKTAS LLC","NATIONAL TOBACCO COMPANY","NEWYORK SUNGLASSES","NICKA K","NOBLESSE","NOVA","NOVA COLLECTION","NUUNCHI INC","OTHER","OUR HEAVENLY SCENTS","OUTRE","PANA LINE","PEACH TOWN","PEPSI","PETRA","PK BEAUTY","PNM TRADING","PNW GLOBAL","POS VENDOR","PRECISION OPTICAL","PRIMA COLLECTION","R&B COLLECTION","R&R CORP","REAL BEAUTY","RED","RED CARPET","RED OWL","RIAH HAIR","RICKING PAPER - JOSHEN","ROYAL BEAUTY","SALE","SAMS","SATYA WHOLESALE","SAVE ME","SENSATIONNEL","SENSUAL COLLECTION","SHA","SHAKE-N-GO","SHK TRADING","SIGNATURE LOOKS INC","SILKY HAIR","SK WIRELESS","SKY TRADING","SM BEAUTY","SO PRETTY","SP IMPORT","SPICE SUPREME","STAGNARO","SUNFLOWER","SUNFLOWER - HOLLYWOOD CONTACT","T&J MAX","TEAM MODERN","TEST","THE WIG","TOPS","TRANSFER","TRI STATE","TRUE COLOR","UNIVERSAL BEAUTY","US HAIR","US MERCHANDISE","VALUE SPOT","VANESSA","VIVACE","VIVICA FOX","VOG NEW YORK","WINK O LASH","YJ WHOLESALE","YOUNGS FASHION","YSU"];
+
+function saveExpected(){
+  localStorage.setItem('ck_expected', JSON.stringify(expectedOrders));
+  sbSaveExpected();
+}
+
+async function sbSaveExpected(){
+  if(!expectedOrders.length){
+    await supa.from('settings').delete().eq('key','expected_orders');
+    return;
+  }
+  supa.from('settings').upsert({key:'expected_orders', value:JSON.stringify(expectedOrders)},{onConflict:'key'})
+    .catch(e=>console.warn('expected save error:',e.message));
+}
+
+async function sbLoadExpected(){
+  try{
+    const {data} = await supa.from('settings').select('value').eq('key','expected_orders').maybeSingle();
+    if(data?.value){
+      expectedOrders = JSON.parse(data.value);
+      localStorage.setItem('ck_expected', JSON.stringify(expectedOrders));
+    }
+    // Also load vendor master additions
+    const {data:vd} = await supa.from('settings').select('value').eq('key','vendor_master').maybeSingle();
+    if(vd?.value){
+      const extra = JSON.parse(vd.value);
+      extra.forEach(v=>{ if(!vendorMaster.includes(v)) vendorMaster.push(v); });
+    }
+  }catch(e){ console.warn('expected load error:',e.message); }
+}
+
+async function saveVendorMaster(){
+  supa.from('settings').upsert({key:'vendor_master', value:JSON.stringify(vendorMaster)},{onConflict:'key'})
+    .catch(e=>console.warn('vendor master save:',e.message));
+}
+
+
+// ─── EXPECTED ORDERS LOGIC ────────────────────────────────────────────────────
+let _expEditId = null;
+let _matchExpId = null;
+let _autoMatchPending = null; // {expId, invoiceIdx}
+
+function canManageExpected(){
+  return currentUser && (currentUser.role==='admin' || currentUser.role==='secondary' || currentUser.role==='manager');
+}
+
+function openExpModal(){
+  if(!canManageExpected()){ toast('Admin or Secondary access required','wrn'); return; }
+  _expEditId = null;
+  document.getElementById('exp-vendor-input').value = '';
+  // Default to today
+  const today = new Date();
+  document.getElementById('exp-date').value = today.toISOString().slice(0,10);
+  document.getElementById('exp-notes').value = '';
+  document.getElementById('exp-new-vendor-row').style.display = 'none';
+  document.getElementById('expModal').style.display = 'flex';
+  setTimeout(()=>document.getElementById('exp-vendor-input').focus(), 100);
+}
+
+function closeExpModal(){
+  document.getElementById('expModal').style.display = 'none';
+  document.getElementById('vendorDrop').style.display = 'none';
+}
+
+function showVendorDrop(){
+  filterVendorDrop(document.getElementById('exp-vendor-input').value);
+}
+
+function filterVendorDrop(q){
+  const drop = document.getElementById('vendorDrop');
+  const term = (q||'').toUpperCase().trim();
+  let matches = term
+    ? vendorMaster.filter(v=>v.toUpperCase().includes(term)).slice(0,12)
+    : vendorMaster.slice(0,12);
+  if(!matches.length && term){
+    drop.innerHTML = `<div class="vendor-opt" style="color:var(--text3);font-style:italic">+ Add "${q}" as new vendor</div>`;
+    drop.querySelector('.vendor-opt').onclick = ()=>selectVendor(q, true);
+    document.getElementById('exp-new-vendor-row').style.display = '';
+  } else {
+    document.getElementById('exp-new-vendor-row').style.display = 'none';
+    drop.innerHTML = matches.map(v=>
+      `<div class="vendor-opt" onclick="selectVendor('${v.replace(/'/g,"\\'")}',false)">${v}</div>`
+    ).join('');
+    if(term && !vendorMaster.find(v=>v.toUpperCase()===term)){
+      drop.innerHTML += `<div class="vendor-opt" style="border-top:1px solid var(--border);color:var(--blue);font-weight:600" onclick="selectVendor('${q.replace(/'/g,"\\'")}',true)">+ Add "${q}"</div>`;
+    }
+  }
+  drop.style.display = matches.length || term ? '' : 'none';
+}
+
+function selectVendor(name, isNew){
+  document.getElementById('exp-vendor-input').value = name;
+  document.getElementById('vendorDrop').style.display = 'none';
+  if(isNew){
+    document.getElementById('exp-new-vendor-row').style.display = '';
+  } else {
+    document.getElementById('exp-new-vendor-row').style.display = 'none';
+  }
+}
+
+// Close dropdown on outside click
+document.addEventListener('click', e=>{
+  if(!e.target.closest('.vendor-search')) document.getElementById('vendorDrop').style.display = 'none';
+});
+
+function saveExpected_new(){
+  const vendor = document.getElementById('exp-vendor-input').value.trim().toUpperCase();
+  const dateVal = document.getElementById('exp-date').value;
+  const notes = document.getElementById('exp-notes').value.trim();
+  if(!vendor){ toast('Select a vendor','wrn'); return; }
+  if(!dateVal){ toast('Select a date','wrn'); return; }
+
+  // Add to vendor master if new
+  if(!vendorMaster.find(v=>v.toUpperCase()===vendor)){
+    vendorMaster.push(vendor);
+    vendorMaster.sort();
+    saveVendorMaster();
+  }
+
+  // Format date as MM/DD/YYYY
+  const [y,m,d] = dateVal.split('-');
+  const fmtDate = `${m}/${d}/${y}`;
+
+  const entry = {
+    id: 'exp_' + Date.now(),
+    vendor,
+    date: fmtDate,
+    notes,
+    createdBy: currentUser?.name||'',
+    createdAt: new Date().toISOString(),
+    isExpected: true,
+    matched: false
+  };
+
+  if(_expEditId){
+    const idx = expectedOrders.findIndex(x=>x.id===_expEditId);
+    if(idx>=0) expectedOrders[idx] = {...expectedOrders[idx], vendor, date:fmtDate, notes};
+  } else {
+    expectedOrders.push(entry);
+  }
+
+  saveExpected();
+  closeExpModal();
+  renderEmployee();
+  toast(`🔶 Expected order added: ${vendor} — ${fmtDate}`, 'ok');
+}
+
+function deleteExpected(expId){
+  if(!canManageExpected()){ toast('Access required','wrn'); return; }
+  expectedOrders = expectedOrders.filter(x=>x.id!==expId);
+  saveExpected();
+  renderEmployee();
+  toast('Expected order removed','wrn');
+}
+
+function openMatchModal(expId){
+  if(!canManageExpected()){ toast('Access required','wrn'); return; }
+  _matchExpId = expId;
+  const exp = expectedOrders.find(x=>x.id===expId);
+  if(!exp) return;
+  // Show unmatched invoices from past 7 days, prioritizing same vendor
+  const cutoff = new Date(); cutoff.setDate(cutoff.getDate()-7);
+  const recent = invoices.filter(x=>{
+    const d = new Date(x.date||x.addedAt);
+    return !isNaN(d) && d >= cutoff;
+  }).sort((a,b)=>{
+    // Same vendor first
+    const aMatch = (a.vendor||'').toUpperCase() === exp.vendor;
+    const bMatch = (b.vendor||'').toUpperCase() === exp.vendor;
+    if(aMatch && !bMatch) return -1;
+    if(!aMatch && bMatch) return 1;
+    return ms(b.addedAt) - ms(a.addedAt);
+  });
+
+  const list = document.getElementById('matchList');
+  if(!recent.length){
+    list.innerHTML = '<div style="text-align:center;color:var(--text3);font-size:13px;padding:20px">No recent invoices found</div>';
+  } else {
+    list.innerHTML = recent.map(inv=>`
+      <div style="display:flex;align-items:center;justify-content:space-between;padding:10px 12px;border:1px solid var(--border2);border-radius:7px;background:${(inv.vendor||'').toUpperCase()===exp.vendor?'var(--blue-dim)':'var(--surface2)'}">
+        <div>
+          <div style="font-weight:600;font-size:13px;color:var(--navy)">${esc(inv.vendor||'—')}</div>
+          <div style="font-size:11px;color:var(--text2)">${esc(inv.date||'—')} · ${esc(inv.invoice_number||'no inv#')} · ${inv.boxes||'?'} boxes</div>
+        </div>
+        <button onclick="confirmMatch('${expId}','${inv.id}')" style="background:var(--blue);color:#fff;border:none;padding:6px 14px;border-radius:5px;font-size:12px;font-weight:600;cursor:pointer">Merge ↔</button>
+      </div>
+    `).join('');
+  }
+  document.getElementById('matchModal').style.display = 'flex';
+}
+
+function closeMatchModal(){
+  document.getElementById('matchModal').style.display = 'none';
+  _matchExpId = null;
+}
+
+function confirmMatch(expId, invoiceId){
+  const exp = expectedOrders.find(x=>x.id===expId);
+  const inv = invoices.find(x=>String(x.id)===String(invoiceId));
+  if(!exp){ toast('Expected order not found','wrn'); return; }
+  if(!inv){ toast('Invoice not found — cannot merge. Upload the invoice first.','wrn'); return; }
+  // Lock sync immediately, then save and poll
+  const _invIdToConfirm = inv.id;
+  _mergePending = true;
+  _lastSaveTime = Date.now();
+  save();
+  closeMatchModal();
+  toast('⏳ Saving invoice — confirming before merge…','ok');
+  _waitForInvoiceInSupabase(_invIdToConfirm, expId, 0);
+}
+
+// Auto-match: called after each invoice upload
+function checkAutoMatch(newInv){
+  const invVendor = (newInv.vendor||'').toUpperCase().trim();
+  const invDate = new Date(newInv.date||newInv.addedAt);
+  if(isNaN(invDate)) return;
+
+  // Find expected orders with same/similar vendor within ±4 days
+  // Uses fuzzy match: either name contains the other, or they share 4+ consecutive chars
+  function _vendorMatch(a, b){
+    if(!a||!b) return false;
+    if(a===b) return true;
+    if(a.includes(b) || b.includes(a)) return true;
+    // Check if they share significant word overlap
+    const aWords = a.split(/\s+/).filter(w=>w.length>2);
+    const bWords = b.split(/\s+/).filter(w=>w.length>2);
+    return aWords.some(w=>bWords.includes(w));
+  }
+  const candidates = expectedOrders.filter(exp=>{
+    if(exp.matched) return false;
+    const expVendor = (exp.vendor||'').toUpperCase().trim();
+    if(!_vendorMatch(invVendor, expVendor)) return false;
+    const expDate = new Date(exp.date);
+    if(isNaN(expDate)) return false;
+    return Math.abs(expDate - invDate) <= 4 * 86400000;
+  });
+
+  if(!candidates.length) return;
+
+  // If multiple matches, pick closest date
+  candidates.sort((a,b)=> Math.abs(new Date(a.date)-invDate) - Math.abs(new Date(b.date)-invDate));
+  const best = candidates[0];
+
+  _autoMatchPending = {expId: best.id, inv: newInv};
+  document.getElementById('autoMatchText').innerHTML =
+    `Uploaded invoice: <strong>${esc(newInv.vendor)}</strong> · ${esc(newInv.date||'')} · #${esc(newInv.invoice_number||'—')}<br><br>` +
+    `Matches expected order: <strong>${esc(best.vendor)}</strong> logged for <strong>${esc(best.date)}</strong>${best.notes?` <em>(${esc(best.notes)})</em>`:''}<br><br>` +
+    `Merge and remove the expected entry?`;
+  document.getElementById('autoMatchModal').style.display = 'flex';
+}
+
+function closeAutoMatch(doMerge){
+  document.getElementById('autoMatchModal').style.display = 'none';
+  if(doMerge && _autoMatchPending){
+    const expId = _autoMatchPending.expId;
+    const invId = _autoMatchPending.inv.id;
+    _autoMatchPending = null;
+    _mergePending = true; // Block ALL syncs immediately before anything else
+    _lastSaveTime = Date.now(); // Also reset the 15s cooldown
+    save();
+    toast('⏳ Saving invoice — confirming before merge…','ok');
+    _waitForInvoiceInSupabase(invId, expId, 0);
+    return;
+  }
+  _autoMatchPending = null;
+}
+
+async function _waitForInvoiceInSupabase(invId, expId, attempts){
+  // Direct write + confirm approach — no polling race conditions
+  _mergePending = true;
+  const rawId    = String(invId);
+  const safeId   = rawId.replace(/\./g,'_');
+  const prefixId = safeId.startsWith('inv_') ? safeId : 'inv_' + safeId;
+
+  try{
+    // Step 1: Find the invoice in local array
+    const inv = invoices.find(x=>{
+      const xId = String(x.id).replace(/\./g,'_');
+      return xId === safeId || xId === prefixId || String(x.id) === rawId;
+    });
+
+    if(!inv){
+      toast('⚠️ Invoice not found locally — merge aborted. Re-upload and try again.','err');
+      _mergePending = false;
+      renderEmployee();
+      return;
+    }
+
+    // Step 2: Write this invoice directly to Supabase and AWAIT the result
+    const row = {
+      id: safeId.startsWith('inv_') ? safeId : prefixId,
+      vendor: inv.vendor||'', date: inv.date||'',
+      invoice_number: inv.invoice_number||'', filename: inv.filename||'',
+      boxes: inv.boxes!=null && inv.boxes!=='' ? parseInt(inv.boxes,10)||0 : 0,
+      total: inv.total!=null && inv.total!=='' ? parseFloat(String(inv.total).replace(/[^0-9.]/g,''))||0 : 0,
+      qty_shipped: inv.qty_shipped!=null && inv.qty_shipped!=='' ? parseInt(inv.qty_shipped,10)||0 : 0,
+      added_at: inv.addedAt||new Date().toISOString(),
+      file_url: inv.fileUrl||'', idb_key: inv.idbKey||'',
+      rcv1: inv.rcv1!=null && inv.rcv1!=='' ? parseInt(inv.rcv1,10)||0 : 0,
+      rcv1ts: inv.rcv1ts||'', rcv1by: inv.rcv1by||'',
+      rcv2: inv.rcv2!=null && inv.rcv2!=='' ? parseInt(inv.rcv2,10)||0 : 0,
+      rcv2ts: inv.rcv2ts||'', rcv2by: inv.rcv2by||'',
+      rcv3: inv.rcv3!=null && inv.rcv3!=='' ? parseInt(inv.rcv3,10)||0 : 0,
+      rcv3ts: inv.rcv3ts||'', rcv3by: inv.rcv3by||'',
+      uploaded_by: inv.uploadedBy||'', manual_status: inv.manualStatus||'',
+    };
+
+    const {error: writeErr} = await supa.from('invoices').upsert(row, {onConflict:'id'});
+    if(writeErr){
+      console.warn('Direct write error:', writeErr.message);
+      // Write failed — retry up to 3 times with 2s gap
+      if(attempts < 3){
+        setTimeout(()=>_waitForInvoiceInSupabase(invId, expId, attempts+1), 2000);
+        return;
+      }
+      // After 3 tries, save to localStorage only and warn
+      localStorage.setItem('ck_inv', JSON.stringify(invoices));
+      expectedOrders = expectedOrders.filter(x=>x.id!==expId);
+      saveExpected();
+      _mergePending = false;
+      renderEmployee(); updateStats();
+      toast('✅ Merged locally (cloud sync pending — check connection)','wrn');
+      return;
+    }
+
+    // Step 3: Write confirmed — now safely remove expected entry
+    expectedOrders = expectedOrders.filter(x=>x.id!==expId);
+    saveExpected();
+    _lastSaveTime = Date.now();
+    _mergePending = false;
+
+    // Step 4: Reload from Supabase to get clean authoritative state
+    await sbLoadAll();
+    renderEmployee(); updateStats();
+    toast('✅ Merged & saved — invoice confirmed in cloud','ok');
+
+  }catch(e){
+    console.error('Merge error:', e.message);
+    if(attempts < 3){
+      setTimeout(()=>_waitForInvoiceInSupabase(invId, expId, attempts+1), 2000);
+    } else {
+      _mergePending = false;
+      toast('⚠️ Merge error — invoice kept locally. Try syncing manually.','err');
+      renderEmployee();
+    }
+  }
+}
+
+
+// ─── LIVE RCV UPDATE (fires on every keystroke — updates UI instantly) ────────
+function handleRcvLive(id, field, val){
+  const inv = invoices.find(x=>String(x.id)===String(id));
+  if(!inv) return;
+
+  // Temporarily update in memory for live UI calculation (don't save yet)
+  const prevVal = inv[field];
+  inv[field] = val==='' ? '' : toNum(val);
+
+  const st  = getStatus(inv);
+  const rem = calcRem(inv);
+
+  // Update remaining cell
+  const remEl = document.getElementById('wrem_'+safeId(id));
+  if(remEl){
+    remEl.className = 'wremain ' + (st==='complete'?'wc':st==='overage'?'wo':st==='partial'?'wp':'wn');
+    if(st==='complete') remEl.innerHTML = '<span class="badge badge-green">✓</span>';
+    else if(st==='overage') remEl.innerHTML = '<span class="badge badge-red">+'+Math.abs(rem)+'</span>';
+    else remEl.textContent = rem!==null ? rem : '—';
+  }
+
+  // Update status badge instantly
+  const stEl = document.getElementById('wst_'+safeId(id));
+  if(stEl){
+    if(st==='complete')     stEl.innerHTML = '<span class="badge badge-green">✓ Done</span>';
+    else if(st==='overage') stEl.innerHTML = '<span class="badge badge-red">⚠ Overage</span>';
+    else if(st==='partial') stEl.innerHTML = '<span class="badge badge-amber">Partial</span>';
+    else                    stEl.innerHTML = '<span class="badge badge-gray">Pending</span>';
+  }
+
+  // Update row color
+  const row = remEl ? remEl.closest('tr') : null;
+  if(row){
+    row.classList.toggle('wcomp', st==='complete');
+    row.classList.toggle('wover', st==='overage');
+  }
+
+  // Restore original value — actual save happens on blur via handleRcvDash
+  inv[field] = prevVal;
 }
 
 // ─── RECEIVED HANDLER ─────────────────────────────────────────────────────────
@@ -2076,6 +2584,7 @@ function handleRcv(id,field,val){
   inv[field]=val===''?'':toNum(val);
   inv[field+'ts']=val&&val!==''?fmtTs(new Date()):'';
   inv[field+'by']=val&&val!==''?(currentUser?.name||''):'';
+  _dirtyIds.add(String(id));
   save();
   const row=document.querySelector(`tr[data-id="${safeId(id)}"]`);
   if(row){
@@ -2094,6 +2603,7 @@ function handleRcvDash(id,field,val){
   // Flag if RCV was entered on an invoice with no box count
   if(val&&val!==''&&!inv.boxes) inv.rcvOnMissing = true;
   else if(!val) inv.rcvOnMissing = false;
+  _dirtyIds.add(String(id)); // Mark as having unsaved local changes
   save(); // saves locally + queues Supabase sync
 
   // Fast targeted DOM update — no full re-render, no scroll jump
@@ -2137,9 +2647,37 @@ function handleRcvDash(id,field,val){
   // Employee KPI (lightweight — just update 3 numbers)
   renderEmpKpi && renderEmpKpi();
 
-  // Only full re-render employee tab if it's active
-  if(document.getElementById('page-employee')?.classList.contains('active')){
-    renderEmployee();
+  // After save confirmed: update the input to show locked state
+  const savedInp = document.querySelector(`.wrec-inp[data-id="${safeId(id)}"][data-field="${field}"]`);
+  if(savedInp && !savedInp.disabled && inv[field]!=='' && inv[field]!==0){
+    // Re-lock the input visually now that it's saved
+    savedInp.disabled = true;
+    savedInp.style.background = 'var(--green-dim)';
+    savedInp.style.borderColor = '#86efac';
+    savedInp.style.color = 'var(--green)';
+    savedInp.style.fontWeight = '600';
+    savedInp.style.opacity = '1';
+    savedInp.style.cursor = 'not-allowed';
+    // Show lock button
+    const cell = savedInp.closest('.wrec-cell');
+    if(cell){
+      let lockBtn = cell.querySelector('button.lock-btn');
+      if(!lockBtn){
+        lockBtn = document.createElement('button');
+        lockBtn.className = 'lock-btn';
+        lockBtn.title = 'Locked — click to request override';
+        lockBtn.style.cssText = 'background:none;border:none;cursor:pointer;font-size:13px;padding:2px;opacity:0.6';
+        lockBtn.textContent = '🔒';
+        lockBtn.onmouseover = ()=>lockBtn.style.opacity='1';
+        lockBtn.onmouseout  = ()=>lockBtn.style.opacity='0.6';
+        lockBtn.onclick = ()=>rcvOverride(id, field);
+        const wrap = savedInp.parentElement || cell;
+        wrap.appendChild(lockBtn);
+      }
+    }
+    // Update timestamp display
+    const tsEl = document.getElementById('wts_'+safeId(id)+'_'+field);
+    if(tsEl) tsEl.textContent = inv[field+'ts']||'';
   }
 }
 
@@ -2200,6 +2738,7 @@ function updateVendorAccRow(invId){
 }
 
 function manualSync(){
+  if(_mergePending){ toast('⏳ Merge in progress — sync will run after','wrn'); return; }
   const btn = document.querySelector('.xbtn[onclick="manualSync()"]');
   if(btn){ btn.textContent='↻ Syncing...'; btn.disabled=true; }
   sbLoadAll().then(ok=>{
@@ -2408,12 +2947,20 @@ function boxInputHtml(invId, boxes, tab){
 // ─── AUTO SYNC ────────────────────────────────────────────────────────────────
 let _syncInterval = null;
 
+let _lastSaveTime = 0; // Track when we last saved a new invoice
+let _mergePending = false; // Block auto-sync while merge is in progress
+const _dirtyIds = new Set(); // Invoice IDs with unsaved local RCV changes
+
 function startAutoSync(){
   if(_syncInterval) return; // already running
   _syncInterval = setInterval(async()=>{
     // Don't sync if not logged in or PIN screen showing
     if(!currentUser) return;
     if(!document.getElementById('pinOverlay').classList.contains('hidden')) return;
+    // Don't sync if we just saved a new invoice — wait for Supabase to settle
+    if(Date.now() - _lastSaveTime < 15000) return;
+    // Don't sync if a merge is in progress — would wipe the invoice before confirm
+    if(_mergePending) return;
 
     const prevIds = new Set(invoices.map(x=>String(x.id)));
     const prevCount = invoices.length;
@@ -2677,6 +3224,7 @@ function renderWeekly(){
   const sorted=Object.entries(wks).sort((a,b)=>new Date(b[0])-new Date(a[0]));
   wrap.innerHTML=sorted.map(([key,wk])=>{
     const wInvs=wk.invs.sort((a,b)=>ms(b.date)-ms(a.date));
+    const wExps=(wk.exps||[]).sort((a,b)=>ms(b.date)-ms(a.date));
     const wTotal=wInvs.reduce((s,x)=>s+amt(x.total),0);
     const wBoxes=wInvs.reduce((s,x)=>s+(parseFloat(x.boxes)||0),0);
     const wDone=wInvs.filter(x=>calcRem(x)===0&&(parseFloat(x.boxes)||0)>0).length;
@@ -2689,6 +3237,7 @@ function renderWeekly(){
         <input class="wrec-inp rcv-inp ${f==='rcv1'?'rcv-first':''}" type="number" min="0"
           value="${esc(String(x[f]||''))}"
           data-field="${f}" data-id="${x.id}"
+          oninput="handleRcvLive('${x.id}','${f}',this.value)"
           onchange="handleRcvDash('${x.id}','${f}',this.value)"
           onkeydown="rcvKeyDown(event,this)"
           onfocus="this.select()"
@@ -2752,7 +3301,7 @@ function renderWeekly(){
         </table>
       </div>
     </div>`;
-  }).join('');
+  }).join('<div class="week-sep"></div>');
 }
 
 // ─── PDF WEEK EXPORT ─────────────────────────────────────────────────────────
@@ -2876,16 +3425,25 @@ function renderEmpWeekly(){
   const wrap=document.getElementById('empWeekWrap');
   if(!wrap) return;
   let data=[...invoices].filter(x=>x.date&&!isNaN(new Date(x.date)));
-  if(!data.length){
-    wrap.innerHTML='<div style="padding:24px;text-align:center;color:var(--text3);font-size:13px;background:var(--surface);border-radius:10px;border:1px solid var(--border)">No invoices yet</div>';
-    return;
-  }
+
+  // Merge in expected orders (show even if no real invoices that week)
   const wks={};
   data.forEach(x=>{
     const k=getWkKey(x.date);
-    if(!wks[k]){const{start,end}=getWkRange(x.date);wks[k]={invs:[],start,end};}
+    if(!wks[k]){const{start,end}=getWkRange(x.date);wks[k]={invs:[],exps:[],start,end};}
     wks[k].invs.push(x);
   });
+  expectedOrders.forEach(exp=>{
+    if(!exp.date||isNaN(new Date(exp.date))) return;
+    const k=getWkKey(exp.date);
+    if(!wks[k]){const{start,end}=getWkRange(exp.date);wks[k]={invs:[],exps:[],start,end};}
+    wks[k].exps.push(exp);
+  });
+
+  if(!Object.keys(wks).length){
+    wrap.innerHTML='<div style="padding:24px;text-align:center;color:var(--text3);font-size:13px;background:var(--surface);border-radius:10px;border:1px solid var(--border)">No invoices yet</div>';
+    return;
+  }
   const sorted=Object.entries(wks).sort((a,b)=>new Date(b[0])-new Date(a[0]));
   wrap.innerHTML=sorted.map(([key,wk])=>{
     const wInvs=wk.invs.sort((a,b)=>ms(b.date)-ms(a.date));
@@ -2895,14 +3453,37 @@ function renderEmpWeekly(){
     const wPending=wInvs.filter(x=>getStatus(x)==='pending').length;
     const wPartial=wInvs.filter(x=>getStatus(x)==='partial').length;
     const filteredWInvs = empStatusFilter==='all' ? wInvs : wInvs.filter(x=>getStatus(x)===empStatusFilter);
-    if(!filteredWInvs.length) return '';
+    const wExps = wk.exps || [];
+    // Only skip if nothing to show at all (no invoices AND no expected orders)
+    if(!filteredWInvs.length && !wExps.length) return '';
+    // Build Expected Order rows (amber, shown before real invoices)
+    const expRows = wExps.map(exp=>`
+      <tr class="exp-row">
+        <td style="width:28px;text-align:center;padding:4px"></td>
+        <td class="wv" style="color:#92400e;font-weight:700">${vcaps(exp.vendor||'—')}</td>
+        <td class="wd" style="color:#92400e">${esc(exp.date||'—')}</td>
+        <td class="wi"><span style="font-size:11px;color:#92400e;font-style:italic">${esc(exp.notes||'Awaiting invoice')}</span></td>
+        <td style="text-align:center;color:var(--text3)">—</td>
+        <td style="text-align:center;color:var(--text3)">—</td>
+        <td style="text-align:center;color:var(--text3)">—</td>
+        <td style="text-align:center;color:var(--text3)">—</td>
+        <td style="text-align:center;color:var(--text3)">—</td>
+        <td style="text-align:center"><span class="exp-badge">🔶 Expected</span></td>
+        ${canManageExpected()?`<td style="text-align:center;white-space:nowrap">
+          <button onclick="openMatchModal('${exp.id}')" title="Match to invoice" style="background:var(--blue-dim);color:var(--navy2);border:1px solid #93c5fd;padding:3px 8px;border-radius:4px;font-size:11px;cursor:pointer;margin-right:3px">↔ Match</button>
+          <button onclick="deleteExpected('${exp.id}')" title="Remove" style="background:#fee2e2;color:#dc2626;border:none;padding:3px 8px;border-radius:4px;font-size:11px;cursor:pointer">✕</button>
+        </td>`:'<td></td>'}
+      </tr>`).join('');
+
     const rows=filteredWInvs.map(x=>{
       const st=getStatus(x);
       const boxes=toNum(x.boxes);
       const rem=calcRem(x);
       const rcvInp=(f)=>{
         const val = x[f]||'';
-        const isLocked = val!=='' && val!==0 && val!=='0';
+        // Only lock if value was previously saved (has a timestamp) — not just entered
+        const hasSavedTs = !!(x[f+'ts'] && String(x[f+'ts']).trim());
+        const isLocked = val!=='' && val!==0 && val!=='0' && hasSavedTs;
         const canOverride = currentUser && (currentUser.role==='admin' || currentUser.role==='manager' || currentUser.role==='secondary');
         if(isLocked){
           return `<div class="wrec-cell">
@@ -2921,11 +3502,12 @@ function renderEmpWeekly(){
           <input class="wrec-inp rcv-inp ${f==='rcv1'?'rcv-first':''}" type="number" min="0"
             value="${esc(String(val))}"
             data-field="${f}" data-id="${x.id}"
+            oninput="handleRcvLive('${x.id}','${f}',this.value)"
             onchange="handleRcvDash('${x.id}','${f}',this.value)"
             onkeydown="rcvKeyDown(event,this)"
             onfocus="this.select()"
             placeholder="0" />
-          <div class="wrec-ts">${esc(x[f+'ts']||'')}</div>
+          <div class="wrec-ts" id="wts_${safeId(x.id)}_${f}">${esc(x[f+'ts']||'')}</div>
         </div>`;
       };
       let badge='';
@@ -2944,8 +3526,8 @@ function renderEmpWeekly(){
         <td style="text-align:center">${rcvInp('rcv1')}</td>
         <td style="text-align:center">${rcvInp('rcv2')}</td>
         <td style="text-align:center">${rcvInp('rcv3')}</td>
-        <td style="text-align:center">${remD}</td>
-        <td style="text-align:center">${badge}</td>
+        <td id="wrem_${safeId(x.id)}" class="wremain ${st==='complete'?'wc':st==='overage'?'wo':st==='partial'?'wp':'wn'}" style="text-align:center">${remD}</td>
+        <td id="wst_${safeId(x.id)}" style="text-align:center">${badge}</td>
       </tr>`;
     }).join('');
     const allComplete=wDone===wInvs.length && wInvs.length>0;
@@ -2976,12 +3558,13 @@ function renderEmpWeekly(){
             <th style="text-align:center">Rcv Day 3</th>
             <th style="text-align:center">Remaining</th>
             <th style="text-align:center">Status</th>
+            <th style="width:110px"></th>
           </tr></thead>
-          <tbody>${rows}</tbody>
+          <tbody>${expRows}${rows}</tbody>
         </table>
       </div>
     </div>`;
-  }).join('');
+  }).filter(Boolean).join('<div class="week-sep"></div>');
 }
 
 // ─── ARCHIVE ────────────────────────────────────────────────────────────────────
@@ -3168,6 +3751,7 @@ function amt(s){if(!s)return 0;return parseFloat(String(s).replace(/[^0-9.]/g,''
 function esc(s){return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');}
 function vcaps(s){return esc((s||'').toUpperCase());}
 function save(){
+  _lastSaveTime = Date.now(); // mark time so auto-sync backs off
   localStorage.setItem('ck_inv',JSON.stringify(invoices));
   sbSaveInvoices().then(()=>{
     const dot = document.getElementById('syncDot');
@@ -3245,16 +3829,17 @@ function restoreSession(){
     const lastTab = sessionStorage.getItem('ck_tab') || 'invoices';
     showPage(lastTab, null);
     startAutoSync();
-    setTimeout(queueUncachedInvoices, 5000);
+    setTimeout(queueUncachedInvoices, 90000); // Wait 90s after login before background parsing
     return true;
   }catch(e){ return false; }
 }
 
 function savePinUsers(){
   localStorage.setItem('ck_pin_users', JSON.stringify(pinUsers));
-  // Also save to Supabase so all devices stay in sync
+  // Push to Supabase immediately — this is the source of truth for all devices
   supa.from('settings').upsert({key:'pin_users', value:JSON.stringify(pinUsers)},{onConflict:'key'})
-    .catch(e=>console.warn('pin_users save error:',e.message));
+    .then(()=>{ console.log('✓ Users synced to cloud'); })
+    .catch(e=>{ console.warn('pin_users save error:',e.message); toast('⚠️ User save failed — check connection','err'); });
 }
 
 async function loadPinUsersFromSupabase(){
@@ -3408,6 +3993,9 @@ function applyRoleRestrictions(role){
   // Show/hide Total Amount stat card based on role
   const sTotalCard = document.getElementById('sTotalCard');
   if(sTotalCard) sTotalCard.style.display = (role === 'admin') ? '' : 'none';
+  // Show/hide Expected Order button
+  const addExpBtn = document.getElementById('addExpBtn');
+  if(addExpBtn) addExpBtn.style.display = (role==='admin'||role==='secondary'||role==='manager') ? '' : 'none';
 
   if(role === 'stock' || role === 'manager'){
     ['invoices','dashboard','archive'].forEach(name=>{
@@ -3483,6 +4071,7 @@ async function adminAddUser(){
 
   // Reload from Supabase to get latest list before checking duplicates
   await loadPinUsersFromSupabase();
+  await sbLoadExpected();
 
   if(pinUsers.some(u=>u.pin===pin)){
     toast('That PIN is already in use by: '+(pinUsers.find(u=>u.pin===pin)?.name||'unknown'),'wrn');
@@ -3674,11 +4263,17 @@ function resetIdleTimer(){
 // Processes one invoice at a time in background — never blocks UI
 const _itemizedQueue = [];
 let _itemizedRunning = false;
+let _uploadInProgress = false; // Pause itemized queue during uploads
 
 async function runItemizedQueue(){
   if(_itemizedRunning) return;
   _itemizedRunning = true;
   while(_itemizedQueue.length){
+    // Pause if upload is happening — don't compete for API quota
+    if(_uploadInProgress || _mergePending){
+      await sleep(5000);
+      continue;
+    }
     const job = _itemizedQueue.shift();
     try{
       const cacheKey = job.idbKey || String(job.inv.id).replace(/\./g,'_');
@@ -3711,7 +4306,7 @@ async function runItemizedQueue(){
     }
     // 12 seconds between each invoice — keeps well under 30k tokens/min rate limit
     // (avg invoice ~2-4k tokens, 12s gap = max 5 per minute = ~20k tokens/min)
-    if(_itemizedQueue.length) await sleep(12000);
+    if(_itemizedQueue.length) await sleep(25000); // 25s gap — well under rate limit
   }
   _itemizedRunning = false;
 }
@@ -3742,9 +4337,44 @@ updateKeyUI();
   await loadPinUsersFromSupabase();
   try{ if(typeof buildUserSelect === 'function') buildUserSelect(); }catch(e){ console.warn('buildUserSelect error (non-fatal):', e.message); }
 
+  // Load localStorage FIRST — it's always written synchronously so it's newest
+  const localInvoices = JSON.parse(localStorage.getItem('ck_inv')||'[]');
+  const localArchived = JSON.parse(localStorage.getItem('ck_archived')||'[]');
+  if(localInvoices.length) invoices = localInvoices;
+  if(localArchived.length) archived = localArchived;
+
+  // Then load Supabase — merge cloud data but preserve local RCV values
   const ok = await sbLoadAll();
-  if(!invoices.length) invoices=JSON.parse(localStorage.getItem('ck_inv')||'[]');
-  if(!archived.length) archived=JSON.parse(localStorage.getItem('ck_archived')||'[]');
+
+  // After sbLoadAll, re-apply any local RCV values that are newer than cloud
+  // (localStorage is always written before Supabase, so local is always >= cloud)
+  if(localInvoices.length && invoices.length){
+    invoices = invoices.map(cloudInv => {
+      const localInv = localInvoices.find(l => {
+        const lid = String(l.id).replace(/\./g,'_');
+        const cid = String(cloudInv.id).replace(/\./g,'_');
+        return lid === cid || lid.replace(/^inv_/,'') === cid.replace(/^inv_/,'');
+      });
+      if(!localInv) return cloudInv;
+      // Use local RCV values if they're non-zero (local is always most recent)
+      return {
+        ...cloudInv,
+        rcv1: localInv.rcv1||cloudInv.rcv1||'',
+        rcv1ts: localInv.rcv1ts||cloudInv.rcv1ts||'',
+        rcv1by: localInv.rcv1by||cloudInv.rcv1by||'',
+        rcv2: localInv.rcv2||cloudInv.rcv2||'',
+        rcv2ts: localInv.rcv2ts||cloudInv.rcv2ts||'',
+        rcv2by: localInv.rcv2by||cloudInv.rcv2by||'',
+        rcv3: localInv.rcv3||cloudInv.rcv3||'',
+        rcv3ts: localInv.rcv3ts||cloudInv.rcv3ts||'',
+        rcv3by: localInv.rcv3by||cloudInv.rcv3by||'',
+        manualStatus: localInv.manualStatus||cloudInv.manualStatus||null,
+        boxes: localInv.boxes||cloudInv.boxes,
+      };
+    });
+  }
+
+  if(!archived.length && localArchived.length) archived = localArchived;
 
   // Try to restore previous session — if successful, skip PIN screen
   const sessionRestored = restoreSession();
@@ -3760,6 +4390,65 @@ if(!getKey()) setTimeout(()=>openM('apiMod'),500);
 
 
 </script>
+
+
+<!-- ═══ EXPECTED ORDER MODAL ═══ -->
+<div id="expModal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.45);backdrop-filter:blur(3px);z-index:500;align-items:center;justify-content:center">
+  <div class="exp-modal">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px">
+      <div style="font-family:'Fraunces',serif;font-size:18px;color:var(--navy);font-weight:700">🔶 Add Expected Order</div>
+      <button onclick="closeExpModal()" style="background:none;border:none;font-size:20px;cursor:pointer;color:var(--text3)">✕</button>
+    </div>
+    <div style="font-size:12px;color:var(--text2);margin-bottom:16px">Pre-log an incoming shipment before the invoice arrives.</div>
+    <label class="modal-label">Vendor</label>
+    <div class="vendor-search" style="margin-bottom:12px">
+      <input id="exp-vendor-input" type="text" placeholder="Type to search vendors…"
+        style="width:100%;padding:9px 12px;border:1px solid var(--border2);border-radius:6px;font-size:13px;font-family:Inter,sans-serif;outline:none"
+        oninput="filterVendorDrop(this.value)" onfocus="showVendorDrop()" autocomplete="off" />
+      <div id="vendorDrop" class="vendor-dropdown" style="display:none"></div>
+    </div>
+    <div id="exp-new-vendor-row" style="display:none;margin-bottom:12px">
+      <div style="font-size:11px;color:var(--amber);margin-bottom:6px">⚠ Vendor not in list — will be added permanently</div>
+    </div>
+    <label class="modal-label">Expected Date</label>
+    <input id="exp-date" type="date" style="width:100%;padding:9px 12px;border:1px solid var(--border2);border-radius:6px;font-size:13px;font-family:Inter,sans-serif;outline:none;margin-bottom:12px" />
+    <label class="modal-label">Notes <span style="font-size:10px;color:var(--text3);font-weight:400">(optional)</span></label>
+    <input id="exp-notes" type="text" placeholder="e.g. PO #1234, approx 10 boxes"
+      style="width:100%;padding:9px 12px;border:1px solid var(--border2);border-radius:6px;font-size:13px;font-family:Inter,sans-serif;outline:none;margin-bottom:20px" />
+    <div style="display:flex;gap:8px;justify-content:flex-end">
+      <button onclick="closeExpModal()" style="background:var(--surface2);border:1px solid var(--border2);color:var(--text2);padding:8px 18px;border-radius:6px;font-size:13px;cursor:pointer">Cancel</button>
+      <button onclick="saveExpected_new()" style="background:#f59e0b;color:#fff;border:none;padding:8px 20px;border-radius:6px;font-size:13px;font-weight:600;cursor:pointer">Add Expected Order</button>
+    </div>
+  </div>
+</div>
+
+<!-- ═══ MATCH INVOICE MODAL ═══ -->
+<div id="matchModal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.45);backdrop-filter:blur(3px);z-index:500;align-items:center;justify-content:center">
+  <div class="match-modal">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">
+      <div style="font-family:'Fraunces',serif;font-size:18px;color:var(--navy);font-weight:700">↔ Match to Invoice</div>
+      <button onclick="closeMatchModal()" style="background:none;border:none;font-size:20px;cursor:pointer;color:var(--text3)">✕</button>
+    </div>
+    <div style="font-size:12px;color:var(--text2);margin-bottom:16px">Select the uploaded invoice that matches this expected order. The expected entry will be removed and replaced by the real invoice.</div>
+    <div id="matchList" style="max-height:260px;overflow-y:auto;display:flex;flex-direction:column;gap:6px;margin-bottom:16px"></div>
+    <div style="font-size:11px;color:var(--text3);margin-bottom:16px">Only showing unmatched invoices from the past 7 days</div>
+    <div style="display:flex;gap:8px;justify-content:flex-end">
+      <button onclick="closeMatchModal()" style="background:var(--surface2);border:1px solid var(--border2);color:var(--text2);padding:8px 18px;border-radius:6px;font-size:13px;cursor:pointer">Cancel</button>
+    </div>
+  </div>
+</div>
+
+<!-- ═══ AUTO-MATCH PROMPT ═══ -->
+<div id="autoMatchModal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.45);backdrop-filter:blur(3px);z-index:600;align-items:center;justify-content:center">
+  <div style="background:var(--surface);border-radius:12px;padding:28px;width:min(94vw,460px);box-shadow:0 20px 60px rgba(0,0,0,.25)">
+    <div style="font-family:'Fraunces',serif;font-size:18px;color:var(--navy);font-weight:700;margin-bottom:8px">🔗 Possible Match Found</div>
+    <div id="autoMatchText" style="font-size:13px;color:var(--text2);margin-bottom:20px"></div>
+    <div style="display:flex;gap:8px;justify-content:flex-end">
+      <button onclick="closeAutoMatch(false)" style="background:var(--surface2);border:1px solid var(--border2);color:var(--text2);padding:8px 18px;border-radius:6px;font-size:13px;cursor:pointer">No, Keep Both</button>
+      <button onclick="closeAutoMatch(true)" style="background:var(--blue);color:#fff;border:none;padding:8px 20px;border-radius:6px;font-size:13px;font-weight:600;cursor:pointer">Yes, Merge</button>
+    </div>
+  </div>
+</div>
 
 <!-- ═══ CAMERA MODAL (body level — works from any tab) ═══ -->
 <div id="camMod" style="display:none;position:fixed;inset:0;z-index:9998;background:rgba(0,0,0,.55);align-items:center;justify-content:center">
