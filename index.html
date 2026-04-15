@@ -282,6 +282,7 @@ tbody tr:hover .delbtn,tbody tr:hover .editbtn{opacity:1;}
 .wrec-inp:focus{border-color:var(--blue);box-shadow:0 0 0 2px var(--blue-dim);background:#fff;}
 .wrec-inp:disabled{opacity:.3;cursor:not-allowed;}
 .wrec-cell{display:flex;flex-direction:column;align-items:center;gap:2px;}
+.wrec-inp-row{display:flex;align-items:center;gap:2px;justify-content:center;}
 .wrec-ts{font-size:9px;color:var(--text3);text-align:center;line-height:1.2;}
 .wremain{text-align:center;font-weight:700;font-size:13px;}
 .wremain.wc{color:var(--green);}
@@ -734,7 +735,7 @@ tbody tr:hover .delbtn,tbody tr:hover .editbtn{opacity:1;}
   <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:20px;flex-wrap:wrap;gap:10px">
     <div>
       <div style="font-family:'Fraunces',serif;font-size:22px;color:var(--navy);font-weight:700">📁 Archived Weeks</div>
-      <div style="font-size:12px;color:var(--text3);margin-top:3px">Completed past weeks auto-archive on app load. Admins can force archive anytime. Click any week to expand.</div>
+      <div style="font-size:12px;color:var(--text3);margin-top:3px">Only fully completed weeks (7+ days old) can be archived. Admins use "Archive Completed Now" to trigger. Click any week to expand.</div>
     </div>
     <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
       <button class="btn-outline" onclick="manualArchiveNow()" id="archNowBtn" style="display:none">📁 Archive Completed Now</button>
@@ -887,12 +888,18 @@ async function sbClearAll(){
 }
 
 async function sbSaveArchive(){
-  if(!archived.length) return;
-  const rows = archived.map(a=>({
-    week_key: a.weekKey, week_label: a.weekLabel,
-    archived_at: a.archivedAt, invoices: a.invoices
-  }));
-  await supa.from('archived_weeks').upsert(rows, {onConflict:'week_key'});
+  try{
+    // Delete all existing rows first, then insert current state
+    // This ensures restored weeks are actually removed from Supabase
+    await supa.from('archived_weeks').delete().neq('week_key', '__never__');
+    if(archived.length){
+      const rows = archived.map(a=>({
+        week_key: a.weekKey, week_label: a.weekLabel,
+        archived_at: a.archivedAt, invoices: a.invoices
+      }));
+      await supa.from('archived_weeks').insert(rows);
+    }
+  }catch(e){ console.error('sbSaveArchive error:', e.message); }
 }
 
 async function sbSaveAliases(){
@@ -911,21 +918,27 @@ async function sbSaveAliases(){
 
 async function sbLoadAll(){
   try{
-    // Load archived_weeks FIRST so we can filter them out of active invoices
+    // 1. Load archived weeks from Supabase — it's the authoritative source
+    // (sbSaveArchive now does delete+insert so Supabase always matches local)
     const {data:arch} = await supa.from('archived_weeks').select('*');
-    if(arch && arch.length){
+    if(arch !== null){ // null = request failed; [] = genuinely empty
       archived = arch.map(r=>({
         weekKey:r.week_key, weekLabel:r.week_label,
         archivedAt:r.archived_at, invoices:r.invoices||[]
       }));
+      localStorage.setItem('ck_archived', JSON.stringify(archived));
+      _rebuildArchivedIds();
     }
-    // Now load active invoices, filtering out any that are already archived
-    // Safety: never filter out invoices from the current week
-    const currentWkKey2 = getWkKey(new Date().toISOString().slice(0,10));
+
+    // 2. Load active invoices — skip if merge is in progress
+    if(_mergePending) return true;
+
+    const {data:inv, error:e1} = await supa.from('invoices').select('*').order('added_at',{ascending:false});
+    if(e1) throw e1;
+
+    // Build set of archived invoice IDs to exclude from active list
     const archivedIds = new Set();
     archived.forEach(wk => {
-      // Don't exclude invoices from current week even if somehow in archive
-      if(wk.weekKey === currentWkKey2) return;
       wk.invoices.forEach(x => {
         const id = String(x.id);
         archivedIds.add(id);
@@ -934,68 +947,74 @@ async function sbLoadAll(){
         archivedIds.add(id.replace(/\./g,'_'));
       });
     });
-    const {data:inv, error:e1} = await supa.from('invoices').select('*').order('added_at',{ascending:false});
-    if(e1) throw e1;
-    if(inv && !_mergePending){
-      const freshFromCloud = inv.filter(r => !archivedIds.has(String(r.id))).map(r=>({
+
+    if(inv && inv.length > 0){
+      // Map cloud rows to invoice objects, excluding archived ones
+      const cloudInvoices = inv.filter(r => !archivedIds.has(String(r.id))).map(r=>({
         id:r.id, vendor:r.vendor, date:r.date,
         invoice_number:r.invoice_number, filename:r.filename,
-        fileUrl:r.file_url||'',
-        idbKey:r.idb_key||'',
+        fileUrl:r.file_url||'', idbKey:r.idb_key||'',
         boxes:r.boxes,
         total: r.total!=null ? '$'+parseFloat(r.total).toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2}) : '',
-        qty_shipped:r.qty_shipped,
-        addedAt:r.added_at,
+        qty_shipped:r.qty_shipped, addedAt:r.added_at,
         rcv1:r.rcv1||'', rcv1ts:r.rcv1ts||'', rcv1by:r.rcv1by||'',
         rcv2:r.rcv2||'', rcv2ts:r.rcv2ts||'', rcv2by:r.rcv2by||'',
         rcv3:r.rcv3||'', rcv3ts:r.rcv3ts||'', rcv3by:r.rcv3by||'',
-        uploadedBy:r.uploaded_by||'',
-        manualStatus:r.manual_status||null,
+        uploadedBy:r.uploaded_by||'', manualStatus:r.manual_status||null,
       }));
-      // Smart merge: always prefer local RCV values over cloud
-      // Local is written synchronously by save(), cloud lags by network latency
-      const cloudIds = new Set(freshFromCloud.map(x=>String(x.id)));
-      const localStorageInvoices = JSON.parse(localStorage.getItem('ck_inv')||'[]');
 
-      const merged = freshFromCloud.map(cloudInv => {
-        const cid = String(cloudInv.id).replace(/\./g,'_');
-        // Find matching local invoice (from memory or localStorage)
-        const localInv = invoices.find(x=>{
-          const xid = String(x.id).replace(/\./g,'_');
-          return xid===cid || xid.replace(/^inv_/,'')===cid.replace(/^inv_/,'');
-        }) || localStorageInvoices.find(x=>{
-          const xid = String(x.id).replace(/\./g,'_');
-          return xid===cid || xid.replace(/^inv_/,'')===cid.replace(/^inv_/,'');
-        });
-        if(!localInv) return cloudInv;
-        // Keep cloud data but prefer local RCV if local is non-zero
-        return {...cloudInv,
-          rcv1: localInv.rcv1||cloudInv.rcv1||'',
-          rcv1ts: localInv.rcv1ts||cloudInv.rcv1ts||'',
-          rcv1by: localInv.rcv1by||cloudInv.rcv1by||'',
-          rcv2: localInv.rcv2||cloudInv.rcv2||'',
-          rcv2ts: localInv.rcv2ts||cloudInv.rcv2ts||'',
-          rcv2by: localInv.rcv2by||cloudInv.rcv2by||'',
-          rcv3: localInv.rcv3||cloudInv.rcv3||'',
-          rcv3ts: localInv.rcv3ts||cloudInv.rcv3ts||'',
-          rcv3by: localInv.rcv3by||cloudInv.rcv3by||'',
-          manualStatus: localInv.manualStatus||cloudInv.manualStatus||null,
-          boxes: localInv.boxes||cloudInv.boxes,
+      // Merge: for each cloud invoice, overlay local RCV if local is non-zero
+      // (local is always written synchronously, cloud may lag)
+      const localNow = JSON.parse(localStorage.getItem('ck_inv')||'[]');
+      const merged = cloudInvoices.map(ci => {
+        if(_dirtyIds.size === 0) return ci; // no dirty fields — use cloud as-is
+        const cid = String(ci.id).replace(/\./g,'_');
+        const li = localNow.find(x => String(x.id).replace(/\./g,'_').replace(/^inv_/,'') === cid.replace(/^inv_/,''));
+        if(!li) return ci;
+        return {...ci,
+          rcv1:li.rcv1||ci.rcv1||'', rcv1ts:li.rcv1ts||ci.rcv1ts||'', rcv1by:li.rcv1by||ci.rcv1by||'',
+          rcv2:li.rcv2||ci.rcv2||'', rcv2ts:li.rcv2ts||ci.rcv2ts||'', rcv2by:li.rcv2by||ci.rcv2by||'',
+          rcv3:li.rcv3||ci.rcv3||'', rcv3ts:li.rcv3ts||ci.rcv3ts||'', rcv3by:li.rcv3by||ci.rcv3by||'',
+          manualStatus:li.manualStatus||ci.manualStatus||null,
+          boxes:li.boxes||ci.boxes,
         };
       });
 
-      // Also keep local-only invoices added in last 3 minutes (not in Supabase yet)
-      const threeMinsAgo = Date.now() - 180000;
-      const recentLocalOnly = invoices.filter(x=>{
-        const xId = String(x.id).replace(/\./g,'_');
-        if(cloudIds.has(String(x.id)) || cloudIds.has(xId)) return false;
-        if(archivedIds.has(String(x.id)) || archivedIds.has(xId)) return false;
-        // Never re-add deleted invoices
-        if(_deletedIds.has(String(x.id)) || _deletedIds.has(xId)) return false;
-        return new Date(x.addedAt||0).getTime() > threeMinsAgo;
+      // Add any local-only invoices from last 3 minutes not yet in cloud
+      const cloudIds = new Set(cloudInvoices.map(x=>String(x.id).replace(/\./g,'_').replace(/^inv_/,'')));
+      const fresh = localNow.filter(x=>{
+        const xid = String(x.id).replace(/\./g,'_').replace(/^inv_/,'');
+        if(cloudIds.has(xid)) return false;
+        if(_deletedIds.has(String(x.id))) return false;
+        return (Date.now() - new Date(x.addedAt||0).getTime()) < 180000;
       });
 
-      invoices = [...merged, ...recentLocalOnly];
+      // Deduplicate by invoice_number (keep first occurrence)
+      // Previous broken restores may have pushed duplicate rows
+      const seen = new Set();
+      const deduped = [...merged, ...fresh].filter(x => {
+        // Deduplicate by invoice_number if present, otherwise by id
+        const key = x.invoice_number
+          ? String(x.invoice_number).trim().toLowerCase()
+          : String(x.id).replace(/\./g,'_');
+        if(seen.has(key)) return false;
+        seen.add(key);
+        return true;
+      });
+
+      if(deduped.length > 0 || invoices.length === 0){
+        invoices = deduped;
+        localStorage.setItem('ck_inv', JSON.stringify(invoices));
+        // If we removed duplicates, clean up Supabase too
+        if(deduped.length < merged.length + fresh.length){
+          console.warn('Removed', (merged.length + fresh.length - deduped.length), 'duplicate invoices');
+          setTimeout(()=>sbSaveInvoices().catch(()=>{}), 2000);
+        }
+      } else {
+        console.warn('sbLoadAll: no active invoices from cloud, keeping local');
+      }
+    } else if(inv && inv.length === 0 && invoices.length > 0){
+      console.warn('sbLoadAll: cloud empty, keeping local');
     }
     const {data:al} = await supa.from('aliases').select('*');
     if(al && al.length){
@@ -1032,6 +1051,24 @@ let _mergePending = false;
 let _uploadInProgress = false;
 const _dirtyIds = new Set();
 const _deletedIds = new Set(JSON.parse(localStorage.getItem('ck_deleted')||'[]'));
+
+// Cached set of archived invoice IDs — rebuilt only when archive changes
+// Avoids rebuilding on every render call (major lag source)
+let _archivedIds = new Set();
+function _rebuildArchivedIds(){
+  _archivedIds = new Set();
+  archived.forEach(wk => wk.invoices.forEach(x => {
+    const id = String(x.id);
+    _archivedIds.add(id);
+    _archivedIds.add(id.replace(/\./g,'_'));
+    _archivedIds.add(id.replace(/^inv_/,''));
+    _archivedIds.add('inv_'+id.replace(/^inv_/,''));
+  }));
+}
+function isArchived(id){
+  const sid = String(id);
+  return _archivedIds.has(sid) || _archivedIds.has(sid.replace(/\./g,'_'));
+}
 function _markDeleted(id){
   const sid = String(id).replace(/\./g,'_');
   const prefId = sid.startsWith('inv_') ? sid : 'inv_'+sid;
@@ -2172,15 +2209,28 @@ function _doRcvUnlock(invId, field){
 
   // Wire up handlers
   inp.onchange = function(){
-    handleRcvDash(invId, field, this.value);
-    // Re-lock visually after save
-    this.style.background = 'var(--green-dim)';
-    this.style.borderColor = '#86efac';
-    this.style.color = 'var(--green)';
-    this.disabled = true;
-    this._lastVal = this.value;
-    const lockBtn = this.closest('.wrec-cell')?.querySelector('button');
-    if(lockBtn){ lockBtn.textContent='🔒'; lockBtn.style.opacity='0.6'; lockBtn.onclick=function(){ rcvOverride(invId,field); }; }
+    const newVal = this.value;
+    handleRcvDash(invId, field, newVal);
+    this._lastVal = newVal;
+    if(newVal === '' || newVal === '0' || newVal === 0){
+      // Value cleared — show as editable gray (not locked)
+      this.style.background = '';
+      this.style.borderColor = '';
+      this.style.color = '';
+      this.style.fontWeight = '';
+      this.disabled = false;
+      const lockBtn = this.closest('.wrec-cell')?.querySelector('button');
+      if(lockBtn) lockBtn.style.display = 'none';
+    } else {
+      // Value set — re-lock green
+      this.style.background = 'var(--green-dim)';
+      this.style.borderColor = '#86efac';
+      this.style.color = 'var(--green)';
+      this.style.fontWeight = '600';
+      this.disabled = true;
+      const lockBtn = this.closest('.wrec-cell')?.querySelector('button');
+      if(lockBtn){ lockBtn.textContent='🔒'; lockBtn.style.opacity='0.6'; lockBtn.style.display=''; lockBtn.onclick=function(){ rcvOverride(invId,field); }; }
+    }
   };
   inp.onkeydown = function(e){
     if(e.key==='Enter'){ e.preventDefault(); this.blur(); }
@@ -2714,8 +2764,10 @@ function handleRcvDash(id,field,val){
         lockBtn.onmouseover = ()=>lockBtn.style.opacity='1';
         lockBtn.onmouseout  = ()=>lockBtn.style.opacity='0.6';
         lockBtn.onclick = ()=>rcvOverride(id, field);
-        const wrap = savedInp.parentElement || cell;
-        wrap.appendChild(lockBtn);
+        // Find or create the wrec-inp-row wrapper
+        let row = cell.querySelector('.wrec-inp-row');
+        if(!row){ row = document.createElement('div'); row.className='wrec-inp-row'; cell.insertBefore(row, cell.firstChild); row.appendChild(savedInp); }
+        row.appendChild(lockBtn);
       }
     }
     // Update timestamp display
@@ -2871,7 +2923,8 @@ function fmtTs(d){return d.toLocaleDateString('en-US',{month:'numeric',day:'nume
 // ─── TABLE ────────────────────────────────────────────────────────────────────
 function renderTbl(){
   const tbody=document.getElementById('tBody');
-  let data=[...invoices];
+  // Only show active (non-archived) invoices
+  let data=invoices.filter(x=>!isArchived(x.id));
   data.sort((a,b)=>ms(b.date)-ms(a.date)||ms(b.addedAt)-ms(a.addedAt));
   if(searchQ){
     const q=searchQ.toLowerCase();
@@ -2928,7 +2981,7 @@ function renderTbl(){
     <td colspan="2"></td>
   </tr>`;
   tbody.innerHTML=html;
-  document.getElementById('exportBtn').disabled=false;
+  document.getElementById('exportBtn').disabled=(_active.length===0);
 }
 
 function toggleVendorGroup(vid, hdrEl){
@@ -3045,12 +3098,10 @@ function editFieldEnter(event, nextId){
 function rcvKeyDown(event, input){
   if(event.key !== 'Enter') return;
   event.preventDefault();
-  // Trigger save via onchange if value changed
   const val = input.value;
-  if(val !== input._lastVal) {
-    handleRcvDash(input.dataset.id, input.dataset.field, val);
-    input._lastVal = val;
-  }
+  // Always save on Enter — don't require value to have changed
+  handleRcvDash(input.dataset.id, input.dataset.field, val);
+  input._lastVal = val;
   // Navigate to next vendor's rcv1
   // Snapshot all rcv-first inputs BEFORE any re-render, store by index
   const currentId = input.dataset.id;
@@ -3123,11 +3174,12 @@ function doClear(){const n=invoices.length;if(!n){closeM('clearMod');return;}inv
 
 // ─── STATS ────────────────────────────────────────────────────────────────────
 function updateStats(){
-  document.getElementById('sCount').textContent=invoices.length;
-  const total=invoices.reduce((s,x)=>s+amt(x.total),0);
+  const _active = invoices.filter(x=>!isArchived(x.id));
+  document.getElementById('sCount').textContent=_active.length;
+  const total=_active.reduce((s,x)=>s+amt(x.total),0);
   document.getElementById('sTotal').textContent='$'+total.toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2});
-  document.getElementById('sVend').textContent=new Set(invoices.map(x=>x.vendor).filter(Boolean)).size;
-  if(invoices.length){const latest=invoices.reduce((a,b)=>ms(a.addedAt)>ms(b.addedAt)?a:b);document.getElementById('sDate').textContent=new Date(latest.addedAt).toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'});}
+  document.getElementById('sVend').textContent=new Set(_active.map(x=>x.vendor).filter(Boolean)).size;
+  if(_active.length){const latest=_active.reduce((a,b)=>ms(a.addedAt)>ms(b.addedAt)?a:b);document.getElementById('sDate').textContent=new Date(latest.addedAt).toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'});}
   else{document.getElementById('sDate').textContent='—';}
 }
 
@@ -3271,7 +3323,7 @@ function fmtWkLabel(start,end){
 
 function renderWeekly(){
   const wrap=document.getElementById('weekWrap');
-  let data=[...invoices].filter(x=>x.date&&!isNaN(new Date(x.date)));
+  let data=[...invoices].filter(x=>x.date && !isNaN(new Date(x.date)) && !isArchived(x.id));
   if(weekF!=='all'){const weeks=parseInt(weekF);const cut=new Date();cut.setDate(cut.getDate()-weeks*7);data=data.filter(x=>new Date(x.date)>=cut);}
   if(!data.length){wrap.innerHTML='<div style="padding:24px;text-align:center;color:var(--text3);font-size:13px;background:var(--surface);border-radius:10px;border:1px solid var(--border)">No invoice data to display</div>';return;}
   const wks={};
@@ -3295,6 +3347,7 @@ function renderWeekly(){
           oninput="handleRcvLive('${x.id}','${f}',this.value)"
           onchange="handleRcvDash('${x.id}','${f}',this.value)"
           onkeydown="rcvKeyDown(event,this)"
+          onblur="handleRcvDash('${x.id}','${f}',this.value)"
           onfocus="this.select()"
           placeholder="0" />
         <div class="wrec-ts" id="wts_${safeId(x.id)}_${f}">${esc(x[f+'ts']||'')}${x[f+'by']?` <span style="color:#60a5fa;font-size:9px">${esc(x[f+'by'])}</span>`:''}</div>
@@ -3484,7 +3537,7 @@ function renderEmpKpi(){
 function renderEmpWeekly(){
   const wrap=document.getElementById('empWeekWrap');
   if(!wrap) return;
-  let data=[...invoices].filter(x=>x.date&&!isNaN(new Date(x.date)));
+  let data=[...invoices].filter(x=>x.date && !isNaN(new Date(x.date)) && !isArchived(x.id));
 
   // Merge in expected orders (show even if no real invoices that week)
   const wks={};
@@ -3547,7 +3600,7 @@ function renderEmpWeekly(){
         const canOverride = currentUser && (currentUser.role==='admin' || currentUser.role==='manager' || currentUser.role==='secondary');
         if(isLocked){
           return `<div class="wrec-cell">
-            <div style="display:flex;align-items:center;gap:3px">
+            <div class="wrec-inp-row">
               <input class="wrec-inp" type="number" min="0"
                 value="${esc(String(val))}"
                 data-field="${f}" data-id="${x.id}"
@@ -3559,14 +3612,17 @@ function renderEmpWeekly(){
           </div>`;
         }
         return `<div class="wrec-cell">
-          <input class="wrec-inp rcv-inp ${f==='rcv1'?'rcv-first':''}" type="number" min="0"
-            value="${esc(String(val))}"
-            data-field="${f}" data-id="${x.id}"
-            oninput="handleRcvLive('${x.id}','${f}',this.value)"
-            onchange="handleRcvDash('${x.id}','${f}',this.value)"
-            onkeydown="rcvKeyDown(event,this)"
-            onfocus="this.select()"
-            placeholder="0" />
+          <div class="wrec-inp-row">
+            <input class="wrec-inp rcv-inp ${f==='rcv1'?'rcv-first':''}" type="number" min="0"
+              value="${esc(String(val))}"
+              data-field="${f}" data-id="${x.id}"
+              oninput="handleRcvLive('${x.id}','${f}',this.value)"
+              onchange="handleRcvDash('${x.id}','${f}',this.value)"
+              onkeydown="rcvKeyDown(event,this)"
+              onblur="handleRcvDash('${x.id}','${f}',this.value)"
+              onfocus="this.select()"
+              placeholder="0" />
+          </div>
           <div class="wrec-ts" id="wts_${safeId(x.id)}_${f}">${esc(x[f+'ts']||'')}</div>
         </div>`;
       };
@@ -3631,15 +3687,53 @@ function renderEmpWeekly(){
 // Archive storage: array of {weekKey, weekLabel, archivedAt, invoices:[]}
 let archived = JSON.parse(localStorage.getItem('ck_archived') || '[]');
 
-function saveArchive(){ localStorage.setItem('ck_archived', JSON.stringify(archived)); sbSaveArchive(); }
+function saveArchive(){ 
+  _rebuildArchivedIds();
+  localStorage.setItem('ck_archived', JSON.stringify(archived)); 
+  sbSaveArchive(); 
+}
 
 
 // ─── MANUAL ARCHIVE TRIGGER ──────────────────────────────────────────────────
 function manualArchiveNow(){
   if(!currentUser || currentUser.role !== 'admin'){ toast('Admin only','wrn'); return; }
+  // Preview what will be archived
+  const now = new Date();
+  const currentWkKey = getWkKey(now.toISOString().slice(0,10));
+  const wks = {};
+  invoices.forEach(x => {
+    if(!x.date || isNaN(new Date(x.date))) return;
+    const k = getWkKey(x.date);
+    if(!wks[k]){ const{start,end}=getWkRange(x.date); wks[k]={invs:[],start,end,key:k}; }
+    wks[k].invs.push(x);
+  });
+  const lastWkKey2 = getWkKey(new Date(Date.now() - 7*86400000).toISOString().slice(0,10));
+  const eligible = Object.values(wks).filter(wk => {
+    if(wk.key === currentWkKey) return false;  // never archive current week
+    if(wk.key === lastWkKey2) return false;     // never archive last week
+    const allDone = wk.invs.length>0 && wk.invs.every(x=>getStatus(x)==='complete');
+    if(!allDone) return false;
+    const alreadyArchived = archived.some(a=>a.weekKey===wk.key);
+    if(alreadyArchived) return false;
+    // Must be at least 7 days since week ended
+    const weekEnd = new Date(wk.end);
+    const daysSinceEnd = Math.floor((now - weekEnd) / 86400000);
+    if(daysSinceEnd < 7) return false;
+    return true;
+  });
+  if(!eligible.length){
+    toast('📁 No complete past weeks to archive','ok');
+    return;
+  }
+  const labels = eligible.map(wk=>fmtWkLabel(wk.start,wk.end)).join(', ');
+  if(!confirm(`Archive ${eligible.length} completed week(s)?
+
+${labels}
+
+This will move them to the Archive tab.`)) return;
   checkAutoArchive();
   renderArchive();
-  toast('📁 Archive check complete','ok');
+  toast(`📁 ${eligible.length} week${eligible.length!==1?'s':''} archived`,'ok');
 }
 
 // Called on app load and every Monday check
@@ -3669,10 +3763,15 @@ function checkAutoArchive(){
     const alreadyArchived = archived.some(a => a.weekKey === wk.key);
     if(alreadyArchived) return;
 
-    // Check week ended at least 7 days ago (previous week safety buffer)
+    // Safety: require at least 14 days since week ended before auto-archiving
     const weekEnd = new Date(wk.end);
     const daysSinceEnd = Math.floor((now - weekEnd) / 86400000);
-    if(daysSinceEnd <= 0) return; // week hasn't fully ended yet — require at least 1 day past Saturday
+    if(daysSinceEnd < 7) return; // require 1 full week past Saturday before archiving
+
+    // Extra safety: don't archive the CURRENT week or the week immediately before
+    // (user may still be entering RCV data for last week)
+    const lastWkKey = getWkKey(new Date(Date.now() - 7*86400000).toISOString().slice(0,10));
+    if(wk.key === lastWkKey) return;
 
     // Archive it
     const label = fmtWkLabel(wk.start, wk.end);
@@ -3683,41 +3782,62 @@ function checkAutoArchive(){
       invoices: [...wk.invs]
     });
 
-    // Remove these invoices from active list AND from Supabase
+    // Remove from active list only — keep in Supabase invoices table
+    // sbLoadAll will filter them out via archivedIds set
     const archInvIds = new Set(wk.invs.map(x => String(x.id)));
     invoices = invoices.filter(x => !archInvIds.has(String(x.id)));
-    // Delete from Supabase invoices table so they don't come back on sync
-    // Use bulk delete for reliability
-    wk.invs.forEach(x => {
-      const rawId = String(x.id);
-      const safeId = rawId.replace(/\./g,'_');
-      const invId = rawId.startsWith('inv_') ? rawId : 'inv_' + rawId;
-      supa.from('invoices').delete().in('id', [rawId, safeId, invId]).then(({error})=>{
-        if(error) console.warn('Archive delete error:', error.message, rawId);
-      });
-    });
     archiveCount++;
   });
 
   if(archiveCount > 0){
-    save(); saveArchive();
+    localStorage.setItem('ck_inv', JSON.stringify(invoices));
+    localStorage.setItem('ck_archived', JSON.stringify(archived));
+    _rebuildArchivedIds();
+    // Save to Supabase — fire and forget but log errors
+    sbSaveArchive().catch(e=>console.error('Archive save failed:',e.message));
+    sbSaveInvoices().catch(e=>console.error('Invoice save failed:',e.message));
     renderTbl(); updateStats();
     renderWeekly();
-    renderEmpAlerts && renderEmpAlerts();
-    toast(`📁 ${archiveCount} week${archiveCount!==1?'s':''} auto-archived`, 'ok');
+    renderEmployee();
+    if(typeof renderEmpAlerts === 'function') renderEmpAlerts();
+    toast(`📁 ${archiveCount} week${archiveCount!==1?'s':''} archived`, 'ok');
   }
 }
 
-function restoreWeek(weekKey){
+async function restoreWeek(weekKey){
   const idx = archived.findIndex(a => a.weekKey === weekKey);
-  if(idx === -1) return;
+  if(idx === -1){ toast('Week not found','wrn'); return; }
   const wk = archived[idx];
-  // Put invoices back into active list
-  invoices.push(...wk.invoices);
+
+  // Deduplicate — only add invoices not already in active list
+  const existingIds = new Set(invoices.map(x=>String(x.id)));
+  const toAdd = wk.invoices.filter(x=>!existingIds.has(String(x.id)));
+  if(toAdd.length) invoices.push(...toAdd);
+
+  // Remove from archived list
   archived.splice(idx, 1);
-  save(); saveArchive();
-  renderTbl(); updateStats(); renderWeekly(); renderArchive();
-  toast(`↩ Week of ${wk.weekLabel} restored to active`, 'ok');
+  _rebuildArchivedIds();
+
+  // Block auto-sync while we save
+  _lastSaveTime = Date.now();
+  _mergePending = true;
+
+  // Save to localStorage immediately
+  localStorage.setItem('ck_inv', JSON.stringify(invoices));
+  localStorage.setItem('ck_archived', JSON.stringify(archived));
+
+  // Save to Supabase and WAIT — especially sbSaveArchive which deletes the row
+  toast(`↩ Restoring ${wk.weekLabel}…`, 'ok');
+  try{
+    await sbSaveArchive(); // delete+insert — removes the week from Supabase
+    await sbSaveInvoices(); // save active invoices with RCV data
+  }catch(e){ console.warn('Restore save error:', e.message); }
+
+  _mergePending = false;
+  _lastSaveTime = Date.now(); // reset again after save
+
+  renderTbl(); updateStats(); renderWeekly(); renderEmployee(); renderArchive();
+  toast(`✅ ${wk.weekLabel} restored — ${toAdd.length} invoice${toAdd.length!==1?'s':''} back in active`, 'ok');
 }
 
 function renderArchive(){
@@ -3811,7 +3931,17 @@ function amt(s){if(!s)return 0;return parseFloat(String(s).replace(/[^0-9.]/g,''
 function esc(s){return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');}
 function vcaps(s){return esc((s||'').toUpperCase());}
 function save(){
-  _lastSaveTime = Date.now(); // mark time so auto-sync backs off
+  _lastSaveTime = Date.now();
+  // Deduplicate before saving — prevent accumulation from bugs
+  const _saveSeen = new Set();
+  invoices = invoices.filter(x => {
+    const key = x.invoice_number
+      ? String(x.invoice_number).trim().toLowerCase()
+      : String(x.id).replace(/\./g,'_');
+    if(_saveSeen.has(key)) return false;
+    _saveSeen.add(key);
+    return true;
+  });
   localStorage.setItem('ck_inv',JSON.stringify(invoices));
   sbSaveInvoices().then(()=>{
     const dot = document.getElementById('syncDot');
@@ -4403,50 +4533,30 @@ updateKeyUI();
   const localInvoices = JSON.parse(localStorage.getItem('ck_inv')||'[]');
   const localArchived = JSON.parse(localStorage.getItem('ck_archived')||'[]');
   if(localInvoices.length) invoices = localInvoices;
-  if(localArchived.length) archived = localArchived;
+  if(localArchived.length){ archived = localArchived; _rebuildArchivedIds(); }
 
   // Then load Supabase — merge cloud data but preserve local RCV values
   const ok = await sbLoadAll();
 
-  // Remove any deleted invoices that came back from Supabase
-  invoices = invoices.filter(x=>{
-    const xId = String(x.id).replace(/\./g,'_');
-    return !_deletedIds.has(xId) && !_deletedIds.has(String(x.id));
-  });
-
-  // After sbLoadAll, re-apply any local RCV values that are newer than cloud
-  // (localStorage is always written before Supabase, so local is always >= cloud)
-  if(localInvoices.length && invoices.length){
-    invoices = invoices.map(cloudInv => {
-      const localInv = localInvoices.find(l => {
-        const lid = String(l.id).replace(/\./g,'_');
-        const cid = String(cloudInv.id).replace(/\./g,'_');
-        return lid === cid || lid.replace(/^inv_/,'') === cid.replace(/^inv_/,'');
-      });
-      if(!localInv) return cloudInv;
-      // Use local RCV values if they're non-zero (local is always most recent)
-      return {
-        ...cloudInv,
-        rcv1: localInv.rcv1||cloudInv.rcv1||'',
-        rcv1ts: localInv.rcv1ts||cloudInv.rcv1ts||'',
-        rcv1by: localInv.rcv1by||cloudInv.rcv1by||'',
-        rcv2: localInv.rcv2||cloudInv.rcv2||'',
-        rcv2ts: localInv.rcv2ts||cloudInv.rcv2ts||'',
-        rcv2by: localInv.rcv2by||cloudInv.rcv2by||'',
-        rcv3: localInv.rcv3||cloudInv.rcv3||'',
-        rcv3ts: localInv.rcv3ts||cloudInv.rcv3ts||'',
-        rcv3by: localInv.rcv3by||cloudInv.rcv3by||'',
-        manualStatus: localInv.manualStatus||cloudInv.manualStatus||null,
-        boxes: localInv.boxes||cloudInv.boxes,
-      };
-    });
-  }
-
+  // sbLoadAll handles the merge — localStorage is fallback if Supabase fails
+  if(!invoices.length && localInvoices.length) invoices = localInvoices;
   if(!archived.length && localArchived.length) archived = localArchived;
+
+  // Deduplicate local invoices[] immediately (fix accumulated duplicates)
+  const _initSeen = new Set();
+  invoices = invoices.filter(x => {
+    const key = x.invoice_number
+      ? String(x.invoice_number).trim().toLowerCase()
+      : String(x.id).replace(/\./g,'_');
+    if(_initSeen.has(key)) return false;
+    _initSeen.add(key);
+    return true;
+  });
 
   // Try to restore previous session — if successful, skip PIN screen
   const sessionRestored = restoreSession();
-  checkAutoArchive(); setInterval(checkAutoArchive,3600000);
+  // Auto-archive disabled — admin must use "Archive Now" button manually
+  // checkAutoArchive(); setInterval(checkAutoArchive,3600000);
   if(ok) toast('✓ Connected to team database','ok');
   else toast('⚠️ Offline mode — changes will sync when reconnected','wrn');
   if(!sessionRestored){
