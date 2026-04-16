@@ -1058,8 +1058,8 @@ async function sbLoadAll(){
         const localPOs2 = new Set(expectedOrders.map(e=>e.poNumber).filter(Boolean));
         const newFromCloud = cloudExp.filter(e=>
           !localIds2.has(e.id) &&
-          !localPOs2.has(e.poNumber) &&
-          !_deletedExpIds.has(e.id) // never re-add deleted orders
+          !_deletedExpIds.has(e.id) // block exact deleted IDs only
+          // Note: allow same PO# with new ID (re-imported after delete)
         );
         if(newFromCloud.length){
           expectedOrders = [...expectedOrders, ...newFromCloud];
@@ -2437,8 +2437,7 @@ async function gmailImportOrders(){
       // Add cloud orders not already in local
       const toMerge = cloudExp.filter(e=>
         !localIds.has(e.id) &&
-        !localPOs.has(e.poNumber) &&
-        !_deletedExpIds.has(e.id) // never re-add deleted orders
+        !_deletedExpIds.has(e.id) // block exact deleted IDs only
       );
       const before = expectedOrders.length;
       expectedOrders = [...expectedOrders, ...toMerge];
@@ -2449,11 +2448,10 @@ async function gmailImportOrders(){
         const k=(e.vendor||'').toLowerCase()+'|'+(e.date||''); if(seenVD.has(k)) return false; seenVD.add(k); return true;
       });
       localStorage.setItem('ck_expected', JSON.stringify(expectedOrders));
-      // Save merged list back to Supabase so all devices are in sync
       sbSaveExpected();
       renderEmployee();
-      const newCount = expectedOrders.length - before;
-      toast(newCount > 0 ? `📧 ${newCount} new order${newCount!==1?'s':''} synced from Gmail` : '📧 All orders already loaded', 'ok');
+      const added = expectedOrders.length - before;
+      toast(added > 0 ? `📧 ${added} new order${added!==1?'s':''} synced from Gmail` : '📧 Expected orders up to date', 'ok');
     } else {
       toast('📧 No orders in Supabase yet — orders will appear after nightly sync','wrn');
     }
