@@ -1031,6 +1031,21 @@ async function sbLoadAll(){
       const missing = DEFAULT_ALIASES.filter(d=>!saved.has(d.from.toLowerCase().trim()));
       aliases = [...al.map(a=>({from:a.from,to:a.to})), ...missing];
     }
+    // Refresh expected orders — picks up Google Apps Script imports
+    try{
+      const {data:expSync} = await supa.from('settings').select('value').eq('key','expected_orders').maybeSingle();
+      if(expSync?.value){
+        const cloudExp = JSON.parse(expSync.value);
+        const cloudExpIds = new Set(cloudExp.map(e=>e.id));
+        const localOnlyExp = expectedOrders.filter(e=>!cloudExpIds.has(e.id));
+        const merged = [...cloudExp, ...localOnlyExp];
+        if(merged.length !== expectedOrders.length || JSON.stringify(merged) !== JSON.stringify(expectedOrders)){
+          expectedOrders = merged;
+          localStorage.setItem('ck_expected', JSON.stringify(expectedOrders));
+        }
+      }
+    }catch(e){ console.warn('expected sync:', e.message); }
+
     console.log('✓ Supabase loaded:', invoices.length, 'invoices');
     // Keep localStorage aliases in sync with Supabase
     if(aliases.length) localStorage.setItem('ck_aliases', JSON.stringify(aliases));
