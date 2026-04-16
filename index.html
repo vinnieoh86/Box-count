@@ -47,15 +47,17 @@
 body{background:var(--bg);color:var(--text);font-family:'Inter',sans-serif;min-height:100vh;font-size:14px;}
 
 /* ── HEADER ── */
-header{background:var(--navy);padding:0 32px;display:flex;align-items:stretch;justify-content:space-between;position:sticky;top:0;z-index:100;height:56px;box-shadow:0 2px 8px rgba(0,0,0,0.15);}
-.logo{font-family:'Fraunces',serif;font-size:20px;font-weight:700;color:#fff;display:flex;align-items:center;gap:10px;letter-spacing:-0.01em;}
+header{background:var(--navy);padding:0;display:flex;flex-direction:column;position:sticky;top:0;z-index:100;box-shadow:0 2px 8px rgba(0,0,0,0.15);}
+.hdr-top{display:flex;align-items:center;justify-content:space-between;padding:0 24px;height:46px;border-bottom:1px solid rgba(255,255,255,0.08);}
+.hdr-bottom{display:flex;align-items:stretch;justify-content:center;height:38px;}
+.logo{font-family:'Fraunces',serif;font-size:19px;font-weight:700;color:#fff;display:flex;align-items:center;gap:10px;letter-spacing:-0.01em;}
 .logo-dot{width:8px;height:8px;border-radius:50%;background:#60a5fa;}
-.logo span{color:#93c5fd;font-weight:400;font-style:italic;font-size:16px;}
-.tabs{display:flex;align-items:stretch;position:absolute;left:50%;transform:translateX(-50%);height:100%;}
-.tab-btn{background:transparent;border:none;color:rgba(255,255,255,0.6);font-family:'Inter',sans-serif;font-size:13px;font-weight:500;padding:0 24px;cursor:pointer;border-bottom:2px solid transparent;transition:all .2s;display:flex;align-items:center;gap:7px;}
+.logo span{color:#93c5fd;font-weight:400;font-style:italic;font-size:15px;}
+.tabs{display:flex;align-items:stretch;height:100%;}
+.tab-btn{background:transparent;border:none;color:rgba(255,255,255,0.6);font-family:'Inter',sans-serif;font-size:12px;font-weight:500;padding:0 18px;cursor:pointer;border-bottom:2px solid transparent;transition:all .2s;display:flex;align-items:center;gap:6px;}
 .tab-btn:hover{color:rgba(255,255,255,0.9);}
 .tab-btn.active{color:#fff;border-bottom-color:#60a5fa;}
-.hdr-right{display:flex;align-items:center;gap:10px;}
+.hdr-right{display:flex;align-items:center;gap:8px;flex-wrap:nowrap;}
 .api-pill{display:flex;align-items:center;gap:6px;font-size:12px;color:rgba(255,255,255,0.7);cursor:pointer;padding:5px 12px;border:1px solid rgba(255,255,255,0.2);border-radius:6px;transition:all .2s;}
 .api-pill:hover{border-color:rgba(255,255,255,0.5);color:#fff;}
 .dot{width:7px;height:7px;border-radius:50%;background:#ef4444;flex-shrink:0;}
@@ -458,28 +460,34 @@ tbody tr:hover .delbtn,tbody tr:hover .editbtn{opacity:1;}
 <body>
 
 <header>
-  <div class="logo"><div class="logo-dot"></div>Cee Kay <span>Invoice Tracker</span></div>
-  <div class="tabs">
-    <button class="tab-btn active" onclick="showPage('invoices',this)">📄 Invoices</button>
-    <button class="tab-btn" onclick="showPage('dashboard',this)">📊 Dashboard</button>
-    <button class="tab-btn" onclick="showPage('employee',this)">👤 Receiving</button>
-    <button class="tab-btn" onclick="showPage('archive',this)">📁 Archive</button>
-    <button class="tab-btn" id="settingsTab" onclick="showPage('settings',this)" style="display:none">⚙ Settings</button>
+  <!-- Row 1: Logo + Controls -->
+  <div class="hdr-top">
+    <div class="logo"><div class="logo-dot"></div>Cee Kay <span>Invoice Tracker</span></div>
+    <div class="hdr-right">
+      <div class="api-pill" onclick="openM('apiMod')" title="API Key settings">
+        <div class="dot" id="apiDot"></div><span id="apiTxt">API Key</span>
+      </div>
+      <div class="api-pill" id="syncStatus" style="cursor:default">
+        <div class="dot" id="syncDot" style="background:#6b7280"></div>
+        <span id="syncTxt">Syncing...</span>
+      </div>
+      <button class="xbtn" onclick="manualSync()" title="Sync" style="background:transparent;border:1px solid rgba(255,255,255,0.2);color:#fff;padding:5px 10px;border-radius:6px;font-size:11px;cursor:pointer">↻ Sync</button>
+      <button id="gmailImportBtn" onclick="openOrderImportModal()" title="Import Expected Orders from Gmail" style="display:none;background:#f59e0b;border:none;color:#fff;padding:5px 10px;border-radius:6px;font-size:11px;font-weight:600;cursor:pointer;font-family:Inter,sans-serif">📧 Import Orders</button>
+      <div class="api-pill" onclick="openM('aliasModal')" title="Manage vendor aliases">⚙ Aliases</div>
+      <div class="api-pill" id="adminBtn" style="cursor:default;display:none">👤 <span id="adminBtnLabel">—</span></div>
+      <button id="lockBtn" onclick="pinLogout()" title="Lock screen" style="display:none;background:rgba(255,255,255,.15);border:1px solid rgba(255,255,255,.25);color:#fff;padding:5px 10px;border-radius:6px;font-size:11px;cursor:pointer;font-family:Inter,sans-serif">🔒 Lock</button>
+      <button class="xbtn" id="exportBtn" onclick="exportXL()" disabled style="padding:5px 10px;font-size:11px">↓ Export</button>
+    </div>
   </div>
-  <div class="hdr-right">
-    <div class="api-pill" onclick="openM('apiMod')" title="API Key settings" style="min-width:80px">
-      <div class="dot" id="apiDot"></div><span id="apiTxt">API Key</span>
+  <!-- Row 2: Tabs -->
+  <div class="hdr-bottom">
+    <div class="tabs">
+      <button class="tab-btn active" onclick="showPage('invoices',this)">📄 Invoices</button>
+      <button class="tab-btn" onclick="showPage('dashboard',this)">📊 Dashboard</button>
+      <button class="tab-btn" onclick="showPage('employee',this)">👤 Receiving</button>
+      <button class="tab-btn" onclick="showPage('archive',this)">📁 Archive</button>
+      <button class="tab-btn" id="settingsTab" onclick="showPage('settings',this)" style="display:none">⚙ Settings</button>
     </div>
-    <div class="api-pill" id="syncStatus" style="cursor:default">
-      <div class="dot" id="syncDot" style="background:#6b7280"></div>
-      <span id="syncTxt">Syncing...</span>
-    </div>
-    <button class="xbtn" onclick="manualSync()" title="Sync with team database" style="background:transparent;border:1px solid rgba(255,255,255,0.2);color:#fff;padding:6px 12px;border-radius:6px;font-size:12px;cursor:pointer">↻ Sync</button>
-    <button id="gmailImportBtn" onclick="gmailImportOrders()" title="Import Expected Orders from Gmail" style="display:none;background:#f59e0b;border:none;color:#fff;padding:6px 12px;border-radius:6px;font-size:12px;font-weight:600;cursor:pointer;font-family:Inter,sans-serif">📧 Import Orders</button>
-    <div class="api-pill" onclick="openM('aliasModal')" title="Manage vendor aliases">⚙ Aliases</div>
-    <div class="api-pill" id="adminBtn" style="cursor:default;display:none">👤 <span id="adminBtnLabel">—</span></div>
-    <button id="lockBtn" onclick="pinLogout()" title="Lock screen" style="display:none;background:rgba(255,255,255,.15);border:1px solid rgba(255,255,255,.25);color:#fff;padding:5px 12px;border-radius:6px;font-size:12px;cursor:pointer;font-family:Inter,sans-serif">🔒 Lock</button>
-    <button class="xbtn" id="exportBtn" onclick="exportXL()" disabled>↓ Export</button>
   </div>
 </header>
 
@@ -2299,17 +2307,66 @@ async function _loadImportedPOs(){
   }catch(e){}
 }
 
+function openOrderImportModal(){
+  if(!canManageExpected()){ toast('Admin or Secondary access required','wrn'); return; }
+  document.getElementById('orderImportModal').style.display='flex';
+  document.getElementById('orderImportPaste').value='';
+  setTimeout(()=>document.getElementById('orderImportPaste').focus(), 100);
+}
+function closeOrderImportModal(){
+  document.getElementById('orderImportModal').style.display='none';
+}
+function processOrderImportPaste(){
+  const raw = document.getElementById('orderImportPaste').value.trim();
+  if(!raw){ toast('Paste some email subjects first','wrn'); return; }
+
+  const RE = /\[([^\]]+)\]\s+Cee Kay Order\s+#(\d+)/gi;
+  const today = new Date().toLocaleDateString('en-US',{month:'2-digit',day:'2-digit',year:'numeric'});
+  const existingPOs = new Set(expectedOrders.map(e=>e.poNumber).filter(Boolean));
+
+  let added = 0, skipped = 0;
+  let match;
+  while((match = RE.exec(raw)) !== null){
+    const vendor = match[1].trim().toUpperCase();
+    const po = match[2].trim();
+    if(existingPOs.has(po)){ skipped++; continue; }
+    expectedOrders.push({
+      id: 'exp_' + Date.now() + '_' + Math.random().toString(36).slice(2,6),
+      vendor, date: today,
+      notes: 'PO #' + po,
+      poNumber: po,
+      createdBy: currentUser?.name||'Gmail Import',
+      createdAt: new Date().toISOString(),
+      isExpected: true, matched: false, fromGmail: true
+    });
+    existingPOs.add(po);
+    added++;
+  }
+
+  if(added === 0 && skipped === 0){
+    toast('No valid order subjects found — check format','wrn');
+    return;
+  }
+
+  if(added > 0){
+    saveExpected();
+    renderEmployee();
+    closeOrderImportModal();
+    toast(`📧 Imported ${added} order${added!==1?'s':''}${skipped?' ('+skipped+' already existed)':''}`, 'ok');
+  } else {
+    toast(`📧 All ${skipped} order${skipped!==1?'s':''} already in Expected Orders`, 'ok');
+    closeOrderImportModal();
+  }
+}
+
 async function gmailImportOrders(){
   if(!canManageExpected()){ toast('Admin or Secondary access required','wrn'); return; }
+  if(!getKey()){ openM('apiMod'); toast('API key required','wrn'); return; }
 
   const btn = document.getElementById('gmailImportBtn');
   if(btn){ btn.textContent='📧 Checking...'; btn.disabled=true; }
 
   try{
-    await _loadImportedPOs();
-
-    // Search Gmail directly using the MCP tool available in this session
-    // Build today's date in YYYY/MM/DD for Gmail after: filter
     const now = new Date();
     const afterDate = now.getFullYear() + '/' +
       String(now.getMonth()+1).padStart(2,'0') + '/' +
@@ -2317,104 +2374,104 @@ async function gmailImportOrders(){
 
     const searchQuery = `from:jwonghomeiot subject:"Cee Kay Order" after:${afterDate}`;
 
-    // Use the Gmail search endpoint directly
-    const gmailResp = await fetch('https://gmail.mcp.claude.com/mcp', {
+    // Call Claude API with Gmail MCP — beta header enables mcp_servers param
+    const response = await fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: {
+        'Content-Type': 'application/json',
+        'x-api-key': getKey(),
+        'anthropic-version': '2023-06-01',
+        'anthropic-beta': 'mcp-client-2025-04-04',
+        'anthropic-dangerous-direct-browser-access': 'true'
+      },
       body: JSON.stringify({
-        jsonrpc: '2.0', id: 1, method: 'tools/call',
-        params: { name: 'search_messages', arguments: { q: searchQuery, maxResults: 50 } }
+        model: 'claude-sonnet-4-20250514',
+        max_tokens: 2000,
+        system: 'You search Gmail and return email data as JSON only. No explanation, no markdown, just the JSON array.',
+        messages: [{
+          role: 'user',
+          content: `Use the gmail search tool to search for: ${searchQuery}
+
+Then return ONLY a JSON array of the matching emails like this:
+[{"subject":"[VOG NEW YORK] Cee Kay Order #1415","date":"Wed, 15 Apr 2026 17:04:20 +0000"}]
+
+If no emails found return empty array: []`
+        }],
+        mcp_servers: [{
+          type: 'url',
+          url: 'https://gmail.mcp.claude.com/mcp',
+          name: 'gmail'
+        }]
       })
-    }).catch(()=>null);
-
-    let messages = [];
-
-    if(gmailResp && gmailResp.ok){
-      const gmailData = await gmailResp.json();
-      messages = gmailData?.result?.content?.[0]?.text
-        ? JSON.parse(gmailData.result.content[0].text)?.messages || []
-        : [];
-    }
-
-    // If direct MCP call didn't work, fall back to parsing from known format
-    // The button worked once — means session has Gmail access
-    // Parse subjects directly from the search results
-    if(!messages.length){
-      // Try alternative: fetch via the MCP proxy format
-      const r2 = await fetch('https://gmail.mcp.claude.com/mcp', {
-        method: 'POST',
-        headers: {'Content-Type':'application/json'},
-        body: JSON.stringify({
-          jsonrpc:'2.0', id:2, method:'tools/call',
-          params:{ name:'gmail_search_messages', arguments:{ q: searchQuery, maxResults:50 } }
-        })
-      }).catch(()=>null);
-      if(r2 && r2.ok){
-        const d2 = await r2.json();
-        const txt = d2?.result?.content?.[0]?.text || d2?.result?.[0]?.text || '';
-        try{ const parsed = JSON.parse(txt); messages = parsed?.messages || []; }catch(e){}
-      }
-    }
-
-    // Parse orders from message subjects
-    // Subject format: [VENDOR NAME] Cee Kay Order #XXXX
-    const subjectRegex = /^\[([^\]]+)\]\s+Cee Kay Order #(\d+)/i;
-    const orders = [];
-
-    messages.forEach(msg => {
-      const subject = msg.headers?.Subject || msg.subject || '';
-      const dateStr = msg.headers?.Date || msg.date || '';
-      const match = subject.match(subjectRegex);
-      if(match){
-        // Parse date
-        let fmtDate = new Date().toLocaleDateString('en-US');
-        if(dateStr){
-          const d = new Date(dateStr);
-          if(!isNaN(d)) fmtDate = d.toLocaleDateString('en-US',{month:'2-digit',day:'2-digit',year:'numeric'});
-        }
-        orders.push({ vendor: match[1].trim(), po_number: match[2].trim(), date: fmtDate });
-      }
     });
 
-    if(!orders.length){
+    if(!response.ok){
+      const err = await response.json().catch(()=>({}));
+      throw new Error(err.error?.message || 'API error ' + response.status);
+    }
+
+    const data = await response.json();
+
+    // Get all text content from response blocks
+    const fullText = (data.content||[])
+      .filter(b => b.type === 'text')
+      .map(b => b.text)
+      .join('');
+
+    // Extract JSON array from response
+    let emails = [];
+    const arrMatch = fullText.match(/\[[\s\S]*\]/);
+    if(arrMatch){
+      try{ emails = JSON.parse(arrMatch[0]); }
+      catch(e){ throw new Error('Could not parse email data'); }
+    }
+
+    if(!emails.length){
       toast('📧 No new orders found for today','ok');
       return;
     }
 
-    // Only skip if PO# currently exists in Expected Orders
-    // If user deleted it manually, allow re-import
-    const existingPOs = new Set(expectedOrders.map(e=>e.poNumber).filter(Boolean));
-    const newOrders = orders.filter(o => {
-      const po = String(o.po_number||'').trim();
-      if(!po) return false;
-      if(existingPOs.has(po)) return false; // already in expected orders right now
-      return true;
+    // Parse vendor + PO# from subject: [VENDOR NAME] Cee Kay Order #XXXX
+    const RE = /\[([^\]]+)\]\s+Cee Kay Order\s+#(\d+)/i;
+    const orders = [];
+    emails.forEach(e => {
+      const subj = e.subject || e.Subject || '';
+      const dateStr = e.date || e.Date || '';
+      const m = subj.match(RE);
+      if(!m) return;
+      let fmtDate = now.toLocaleDateString('en-US',{month:'2-digit',day:'2-digit',year:'numeric'});
+      if(dateStr){ const d=new Date(dateStr); if(!isNaN(d)) fmtDate=d.toLocaleDateString('en-US',{month:'2-digit',day:'2-digit',year:'numeric'}); }
+      orders.push({ vendor: m[1].trim().toUpperCase(), po: m[2].trim(), date: fmtDate });
     });
 
+    if(!orders.length){
+      toast('📧 Emails found but could not parse vendor/PO info','wrn');
+      return;
+    }
+
+    // Only skip POs already in current Expected Orders (deleted = re-importable)
+    const existingPOs = new Set(expectedOrders.map(e=>e.poNumber).filter(Boolean));
+    const newOrders = orders.filter(o => !existingPOs.has(o.po));
+
     if(!newOrders.length){
-      toast('📧 All orders already imported — nothing new','ok');
+      toast('📧 All orders already in Expected Orders','ok');
       return;
     }
 
     let added = 0;
-    newOrders.forEach(order => {
-      const vendor = order.vendor.toUpperCase().trim();
-      const po = String(order.po_number).trim();
-      const date = order.date;
-
+    newOrders.forEach(o => {
       expectedOrders.push({
         id: 'exp_' + Date.now() + '_' + Math.random().toString(36).slice(2,6),
-        vendor,
-        date,
-        notes: 'PO #' + po,
-        poNumber: po,
+        vendor: o.vendor,
+        date: o.date,
+        notes: 'PO #' + o.po,
+        poNumber: o.po,
         createdBy: currentUser?.name||'Gmail Import',
         createdAt: new Date().toISOString(),
         isExpected: true,
         matched: false,
         fromGmail: true
       });
-
       added++;
     });
 
@@ -4907,5 +4964,28 @@ if(!getKey()) setTimeout(()=>openM('apiMod'),500);
   </div>
 </div>
 
+
+<!-- ═══ ORDER IMPORT MODAL ═══ -->
+<div id="orderImportModal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.45);backdrop-filter:blur(3px);z-index:500;align-items:center;justify-content:center">
+  <div style="background:var(--surface);border-radius:12px;padding:28px;width:min(94vw,520px);box-shadow:0 20px 60px rgba(0,0,0,.25)">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
+      <div style="font-family:'Fraunces',serif;font-size:18px;color:var(--navy);font-weight:700">📧 Import Orders from Gmail</div>
+      <button onclick="closeOrderImportModal()" style="background:none;border:none;font-size:20px;cursor:pointer;color:var(--text3)">✕</button>
+    </div>
+    <div style="font-size:12px;color:var(--text2);margin-bottom:14px">
+      Paste the email subject lines from Gmail below — one per line.<br>
+      Format: <code style="background:var(--surface2);padding:2px 6px;border-radius:4px">[VENDOR NAME] Cee Kay Order #1234</code>
+    </div>
+    <textarea id="orderImportPaste" placeholder="[VOG NEW YORK] Cee Kay Order #1415&#10;[SKY TRADING] Cee Kay Order #1414&#10;[SHAKE-N-GO] Cee Kay Order #1413" 
+      style="width:100%;height:160px;padding:10px;border:1px solid var(--border2);border-radius:8px;font-size:12px;font-family:Inter,sans-serif;resize:vertical;outline:none;background:var(--surface2)"></textarea>
+    <div style="font-size:11px;color:var(--text3);margin:8px 0 16px">
+      💡 In Gmail: select the order emails → right-click → Copy → paste here
+    </div>
+    <div style="display:flex;gap:8px;justify-content:flex-end">
+      <button onclick="closeOrderImportModal()" style="background:var(--surface2);border:1px solid var(--border2);color:var(--text2);padding:8px 18px;border-radius:6px;font-size:13px;cursor:pointer">Cancel</button>
+      <button onclick="processOrderImportPaste()" style="background:#f59e0b;color:#fff;border:none;padding:8px 20px;border-radius:6px;font-size:13px;font-weight:600;cursor:pointer">📥 Import</button>
+    </div>
+  </div>
+</div>
 </body>
 </html>
