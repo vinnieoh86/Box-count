@@ -472,7 +472,17 @@ tbody tr:hover .delbtn,tbody tr:hover .editbtn{opacity:1;}
         <span id="syncTxt">Syncing...</span>
       </div>
       <button class="xbtn" onclick="manualSync()" title="Sync" style="background:transparent;border:1px solid rgba(255,255,255,0.2);color:#fff;padding:5px 10px;border-radius:6px;font-size:11px;cursor:pointer">↻ Sync</button>
-      <button id="gmailImportBtn" onclick="gmailImportOrders(false)" oncontextmenu="event.preventDefault();gmailImportOrders(true)" title="Import Orders — Right-click to force full refresh" style="display:none;background:#f59e0b;border:none;color:#fff;padding:5px 10px;border-radius:6px;font-size:11px;font-weight:600;cursor:pointer;font-family:Inter,sans-serif">📧 Import Orders</button>
+      <div id="gmailImportBtn" style="display:none;position:relative;font-family:Inter,sans-serif">
+        <div style="display:flex;border-radius:6px;overflow:visible">
+          <button onclick="gmailImportOrders(false)" style="background:#f59e0b;border:none;color:#fff;padding:5px 10px;border-radius:6px 0 0 6px;font-size:11px;font-weight:600;cursor:pointer;font-family:Inter,sans-serif;border-right:1px solid rgba(0,0,0,0.15)">📧 Import Orders</button>
+          <button onclick="toggleImportDropdown()" style="background:#f59e0b;border:none;color:#fff;padding:5px 7px;border-radius:0 6px 6px 0;font-size:11px;cursor:pointer;font-family:Inter,sans-serif" title="More options">▾</button>
+        </div>
+        <div id="importDropdown" style="display:none;position:absolute;top:100%;right:0;margin-top:4px;background:#fff;border:1px solid var(--border2);border-radius:7px;box-shadow:0 4px 16px rgba(0,0,0,0.15);min-width:160px;z-index:999;overflow:hidden">
+          <button onclick="gmailImportOrders(false);toggleImportDropdown()" style="display:block;width:100%;text-align:left;padding:9px 14px;border:none;background:none;font-size:12px;cursor:pointer;color:var(--text);font-family:Inter,sans-serif" onmouseover="this.style.background='var(--surface2)'" onmouseout="this.style.background='none'">📧 Import Orders</button>
+          <div style="height:1px;background:var(--border);margin:0 10px"></div>
+          <button onclick="gmailImportOrders(true);toggleImportDropdown()" style="display:block;width:100%;text-align:left;padding:9px 14px;border:none;background:none;font-size:12px;cursor:pointer;color:#d97706;font-weight:600;font-family:Inter,sans-serif" onmouseover="this.style.background='var(--surface2)'" onmouseout="this.style.background='none'">🔄 Force Refresh</button>
+        </div>
+      </div>
       <div class="api-pill" onclick="openM('aliasModal')" title="Manage vendor aliases">⚙ Aliases</div>
       <div class="api-pill" id="adminBtn" style="cursor:default;display:none">👤 <span id="adminBtnLabel">—</span></div>
       <button id="lockBtn" onclick="pinLogout()" title="Lock screen" style="display:none;background:rgba(255,255,255,.15);border:1px solid rgba(255,255,255,.25);color:#fff;padding:5px 10px;border-radius:6px;font-size:11px;cursor:pointer;font-family:Inter,sans-serif">🔒 Lock</button>
@@ -1170,6 +1180,20 @@ function applyAlias(name){
   }
   return name;
 }
+function toggleImportDropdown(){
+  const dd = document.getElementById('importDropdown');
+  if(!dd) return;
+  dd.style.display = dd.style.display==='none' ? 'block' : 'none';
+}
+// Close dropdown when clicking outside
+document.addEventListener('click', function(e){
+  const btn = document.getElementById('gmailImportBtn');
+  if(btn && !btn.contains(e.target)){
+    const dd = document.getElementById('importDropdown');
+    if(dd) dd.style.display='none';
+  }
+});
+
 function saveGasUrl(){
   const url = document.getElementById('gasUrlInput').value.trim();
   if(url) localStorage.setItem('ck_gas_url', url);
@@ -3735,6 +3759,8 @@ function renderEmployee(){
   const addExpBtn = document.getElementById('addExpBtn');
   if(addExpBtn && currentUser){
     addExpBtn.style.display = (currentUser.role==='admin' || currentUser.role==='secondary') ? '' : 'none';
+    const gmailBtn2 = document.getElementById('gmailImportBtn');
+    if(gmailBtn2) gmailBtn2.style.display = (currentUser.role==='admin' || currentUser.role==='secondary') ? 'flex' : 'none';
   }
 }
 
@@ -4445,7 +4471,7 @@ function applyRoleRestrictions(role){
   if(addExpBtn) addExpBtn.style.display = (role==='admin' || role==='secondary') ? '' : 'none';
   // Show/hide Gmail Import button
   const gmailImportBtn = document.getElementById('gmailImportBtn');
-  if(gmailImportBtn) gmailImportBtn.style.display = (role==='admin' || role==='secondary') ? '' : 'none';
+  if(gmailImportBtn) gmailImportBtn.style.display = (role==='admin' || role==='secondary') ? 'flex' : 'none';
 
   if(role === 'stock' || role === 'manager'){
     ['invoices','dashboard','archive'].forEach(name=>{
