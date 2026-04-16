@@ -2564,8 +2564,22 @@ async function sbLoadExpected(){
   try{
     const {data} = await supa.from('settings').select('value').eq('key','expected_orders').maybeSingle();
     if(data?.value){
-      expectedOrders = JSON.parse(data.value);
-      localStorage.setItem('ck_expected', JSON.stringify(expectedOrders));
+      const cloudExp = JSON.parse(data.value);
+      // Merge cloud + local, dedup by PO# then vendor+date
+      const localIds = new Set(expectedOrders.map(e=>e.id));
+      const toAdd = cloudExp.filter(e => !localIds.has(e.id) && !_deletedExpIds.has(e.id));
+      if(toAdd.length){
+        expectedOrders = [...expectedOrders, ...toAdd];
+        // Dedup by PO#
+        const seen = new Set();
+        expectedOrders = expectedOrders.filter(e=>{
+          const k = e.poNumber || ((e.vendor||'').toLowerCase()+'|'+(e.date||''));
+          if(seen.has(k)) return false;
+          seen.add(k);
+          return true;
+        });
+        localStorage.setItem('ck_expected', JSON.stringify(expectedOrders));
+      }
     }
     // Also load vendor master additions
     const {data:vd} = await supa.from('settings').select('value').eq('key','vendor_master').maybeSingle();
@@ -4850,6 +4864,8 @@ updateKeyUI();
 
   // Try to restore previous session — if successful, skip PIN screen
   const sessionRestored = restoreSession();
+  // Load expected orders from Supabase (may differ from localStorage on new devices)
+  await sbLoadExpected();
   // Auto-archive disabled — admin must use "Archive Now" button manually
   // checkAutoArchive(); setInterval(checkAutoArchive,3600000);
   if(ok) toast('✓ Connected to team database','ok');
