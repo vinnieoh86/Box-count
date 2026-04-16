@@ -2446,7 +2446,8 @@ async function gmailImportOrders(forceRefresh=false){
     const webAppUrl = localStorage.getItem('ck_gas_url') || '';
     if(webAppUrl){
       await fetch(webAppUrl, { method:'GET', mode:'no-cors' }).catch(()=>{});
-      await new Promise(r => setTimeout(r, 3000));
+      // Wait for script to read Gmail + write to Supabase (can take 5-8s)
+      await new Promise(r => setTimeout(r, 7000));
     }
 
     const {data} = await supa.from('settings').select('value').eq('key','expected_orders').maybeSingle();
