@@ -472,7 +472,7 @@ tbody tr:hover .delbtn,tbody tr:hover .editbtn{opacity:1;}
         <span id="syncTxt">Syncing...</span>
       </div>
       <button class="xbtn" onclick="manualSync()" title="Sync" style="background:transparent;border:1px solid rgba(255,255,255,0.2);color:#fff;padding:5px 10px;border-radius:6px;font-size:11px;cursor:pointer">↻ Sync</button>
-      <button id="gmailImportBtn" onclick="openOrderImportModal()" title="Import Expected Orders from Gmail" style="display:none;background:#f59e0b;border:none;color:#fff;padding:5px 10px;border-radius:6px;font-size:11px;font-weight:600;cursor:pointer;font-family:Inter,sans-serif">📧 Import Orders</button>
+      <button id="gmailImportBtn" onclick="gmailImportOrders()" title="Import Expected Orders from Gmail" style="display:none;background:#f59e0b;border:none;color:#fff;padding:5px 10px;border-radius:6px;font-size:11px;font-weight:600;cursor:pointer;font-family:Inter,sans-serif">📧 Import Orders</button>
       <div class="api-pill" onclick="openM('aliasModal')" title="Manage vendor aliases">⚙ Aliases</div>
       <div class="api-pill" id="adminBtn" style="cursor:default;display:none">👤 <span id="adminBtnLabel">—</span></div>
       <button id="lockBtn" onclick="pinLogout()" title="Lock screen" style="display:none;background:rgba(255,255,255,.15);border:1px solid rgba(255,255,255,.25);color:#fff;padding:5px 10px;border-radius:6px;font-size:11px;cursor:pointer;font-family:Inter,sans-serif">🔒 Lock</button>
@@ -666,6 +666,18 @@ tbody tr:hover .delbtn,tbody tr:hover .editbtn{opacity:1;}
 
     <div style="font-family:'Fraunces',serif;font-size:22px;color:var(--navy);font-weight:700;margin-bottom:4px">⚙ Settings</div>
     <div style="font-size:12px;color:var(--text3);margin-bottom:24px">Manage users, access levels, and app settings.</div>
+
+    <!-- Gmail Auto-Import -->
+    <div style="background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:20px;margin-bottom:20px">
+      <div style="font-size:14px;font-weight:700;color:var(--navy);margin-bottom:4px">📧 Gmail Auto-Import</div>
+      <div style="font-size:12px;color:var(--text3);margin-bottom:12px">Paste your Google Apps Script Web App URL to enable one-click Import Orders button.</div>
+      <div style="display:flex;gap:8px;align-items:center">
+        <input id="gasUrlInput" type="text" placeholder="https://script.google.com/macros/s/.../exec"
+          style="flex:1;padding:8px 12px;border:1px solid var(--border2);border-radius:6px;font-size:12px;font-family:Inter,sans-serif;outline:none"/>
+        <button onclick="saveGasUrl()" style="background:var(--blue);color:#fff;border:none;padding:8px 16px;border-radius:6px;font-size:12px;font-weight:600;cursor:pointer">Save</button>
+      </div>
+      <div style="font-size:11px;color:var(--text3);margin-top:6px">In Google Apps Script → Deploy → New deployment → Web app → Execute as Me → Who has access: Anyone → Deploy → copy the URL here</div>
+    </div>
 
     <!-- Current user info -->
     <div style="background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:16px 20px;margin-bottom:20px;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px">
@@ -998,16 +1010,21 @@ async function sbLoadAll(){
         return (Date.now() - new Date(x.addedAt||0).getTime()) < 180000;
       });
 
-      // Deduplicate by invoice_number (keep first occurrence)
-      // Previous broken restores may have pushed duplicate rows
-      const seen = new Set();
+      // Deduplicate: first by id, then by vendor+invoice_number for real duplicates
+      const seenIds = new Set();
+      const seenVendorInv = new Set();
       const deduped = [...merged, ...fresh].filter(x => {
-        // Deduplicate by invoice_number if present, otherwise by id
-        const key = x.invoice_number
-          ? String(x.invoice_number).trim().toLowerCase()
-          : String(x.id).replace(/\./g,'_');
-        if(seen.has(key)) return false;
-        seen.add(key);
+        const xid = String(x.id).replace(/\./g,'_');
+        if(seenIds.has(xid)) return false;
+        seenIds.add(xid);
+        // Also dedup by vendor+invoice_number to catch re-uploaded duplicates
+        const inv = String(x.invoice_number||'').trim().toLowerCase().replace(/_fl$|_8$/,'');
+        const ven = String(x.vendor||'').trim().toLowerCase();
+        if(inv){
+          const vk = ven+'|'+inv;
+          if(seenVendorInv.has(vk)) return false;
+          seenVendorInv.add(vk);
+        }
         return true;
       });
 
@@ -1031,16 +1048,21 @@ async function sbLoadAll(){
       const missing = DEFAULT_ALIASES.filter(d=>!saved.has(d.from.toLowerCase().trim()));
       aliases = [...al.map(a=>({from:a.from,to:a.to})), ...missing];
     }
-    // Refresh expected orders — picks up Google Apps Script imports
+    // Refresh expected orders — merge cloud additions into local
     try{
       const {data:expSync} = await supa.from('settings').select('value').eq('key','expected_orders').maybeSingle();
       if(expSync?.value){
         const cloudExp = JSON.parse(expSync.value);
-        const cloudExpIds = new Set(cloudExp.map(e=>e.id));
-        const localOnlyExp = expectedOrders.filter(e=>!cloudExpIds.has(e.id));
-        const merged = [...cloudExp, ...localOnlyExp];
-        if(merged.length !== expectedOrders.length || JSON.stringify(merged) !== JSON.stringify(expectedOrders)){
-          expectedOrders = merged;
+        // Merge: add any cloud orders not already in local (by id or poNumber)
+        const localIds2 = new Set(expectedOrders.map(e=>e.id));
+        const localPOs2 = new Set(expectedOrders.map(e=>e.poNumber).filter(Boolean));
+        const newFromCloud = cloudExp.filter(e=>
+          !localIds2.has(e.id) &&
+          !localPOs2.has(e.poNumber) &&
+          !_deletedExpIds.has(e.id) // never re-add deleted orders
+        );
+        if(newFromCloud.length){
+          expectedOrders = [...expectedOrders, ...newFromCloud];
           localStorage.setItem('ck_expected', JSON.stringify(expectedOrders));
         }
       }
@@ -1074,6 +1096,12 @@ let _lastSaveTime = 0;
 let _mergePending = false;
 let _uploadInProgress = false;
 const _dirtyIds = new Set();
+const _deletedExpIds = new Set(JSON.parse(localStorage.getItem('ck_deleted_exp')||'[]'));
+function _markExpDeleted(id){
+  _deletedExpIds.add(id);
+  localStorage.setItem('ck_deleted_exp', JSON.stringify([..._deletedExpIds]));
+  setTimeout(()=>{ _deletedExpIds.delete(id); localStorage.setItem('ck_deleted_exp', JSON.stringify([..._deletedExpIds])); }, 86400000);
+}
 const _deletedIds = new Set(JSON.parse(localStorage.getItem('ck_deleted')||'[]'));
 
 // Cached set of archived invoice IDs — rebuilt only when archive changes
@@ -1142,6 +1170,13 @@ function applyAlias(name){
   }
   return name;
 }
+function saveGasUrl(){
+  const url = document.getElementById('gasUrlInput').value.trim();
+  if(url) localStorage.setItem('ck_gas_url', url);
+  else localStorage.removeItem('ck_gas_url');
+  toast(url ? '✅ Web App URL saved' : 'URL cleared','ok');
+}
+
 function saveAliases(autoApply=true){
   localStorage.setItem('ck_aliases',JSON.stringify(aliases));
   sbSaveAliases();
@@ -2376,129 +2411,55 @@ function processOrderImportPaste(){
 
 async function gmailImportOrders(){
   if(!canManageExpected()){ toast('Admin or Secondary access required','wrn'); return; }
-  if(!getKey()){ openM('apiMod'); toast('API key required','wrn'); return; }
 
+  // Get the Web App URL from settings
   const btn = document.getElementById('gmailImportBtn');
   if(btn){ btn.textContent='📧 Checking...'; btn.disabled=true; }
 
   try{
-    const now = new Date();
-    const afterDate = now.getFullYear() + '/' +
-      String(now.getMonth()+1).padStart(2,'0') + '/' +
-      String(now.getDate()).padStart(2,'0');
+    const webAppUrl = localStorage.getItem('ck_gas_url') || '';
 
-    const searchQuery = `from:jwonghomeiot subject:"Cee Kay Order" after:${afterDate}`;
-
-    // Call Claude API with Gmail MCP — beta header enables mcp_servers param
-    const response = await fetch('https://api.anthropic.com/v1/messages', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'x-api-key': getKey(),
-        'anthropic-version': '2023-06-01',
-        'anthropic-beta': 'mcp-client-2025-04-04',
-        'anthropic-dangerous-direct-browser-access': 'true'
-      },
-      body: JSON.stringify({
-        model: 'claude-sonnet-4-20250514',
-        max_tokens: 2000,
-        system: 'You search Gmail and return email data as JSON only. No explanation, no markdown, just the JSON array.',
-        messages: [{
-          role: 'user',
-          content: `Use the gmail search tool to search for: ${searchQuery}
-
-Then return ONLY a JSON array of the matching emails like this:
-[{"subject":"[VOG NEW YORK] Cee Kay Order #1415","date":"Wed, 15 Apr 2026 17:04:20 +0000"}]
-
-If no emails found return empty array: []`
-        }],
-        mcp_servers: [{
-          type: 'url',
-          url: 'https://gmail.mcp.claude.com/mcp',
-          name: 'gmail'
-        }]
-      })
-    });
-
-    if(!response.ok){
-      const err = await response.json().catch(()=>({}));
-      throw new Error(err.error?.message || 'API error ' + response.status);
+    if(webAppUrl){
+      // Web App URL set — call Google Apps Script directly
+      // Use no-cors (can't read response but script runs server-side)
+      await fetch(webAppUrl, { method:'GET', mode:'no-cors' }).catch(()=>{});
+      // Wait for script to write to Supabase (usually <2s)
+      await new Promise(r => setTimeout(r, 3000));
     }
-
-    const data = await response.json();
-
-    // Get all text content from response blocks
-    const fullText = (data.content||[])
-      .filter(b => b.type === 'text')
-      .map(b => b.text)
-      .join('');
-
-    // Extract JSON array from response
-    let emails = [];
-    const arrMatch = fullText.match(/\[[\s\S]*\]/);
-    if(arrMatch){
-      try{ emails = JSON.parse(arrMatch[0]); }
-      catch(e){ throw new Error('Could not parse email data'); }
-    }
-
-    if(!emails.length){
-      toast('📧 No new orders found for today','ok');
-      return;
-    }
-
-    // Parse vendor + PO# from subject: [VENDOR NAME] Cee Kay Order #XXXX
-    const RE = /\[([^\]]+)\]\s+Cee Kay Order\s+#(\d+)/i;
-    const orders = [];
-    emails.forEach(e => {
-      const subj = e.subject || e.Subject || '';
-      const dateStr = e.date || e.Date || '';
-      const m = subj.match(RE);
-      if(!m) return;
-      let fmtDate = now.toLocaleDateString('en-US',{month:'2-digit',day:'2-digit',year:'numeric'});
-      if(dateStr){ const d=new Date(dateStr); if(!isNaN(d)) fmtDate=d.toLocaleDateString('en-US',{month:'2-digit',day:'2-digit',year:'numeric'}); }
-      orders.push({ vendor: m[1].trim().toUpperCase(), po: m[2].trim(), date: fmtDate });
-    });
-
-    if(!orders.length){
-      toast('📧 Emails found but could not parse vendor/PO info','wrn');
-      return;
-    }
-
-    // Only skip POs already in current Expected Orders (deleted = re-importable)
-    const existingPOs = new Set(expectedOrders.map(e=>e.poNumber).filter(Boolean));
-    const newOrders = orders.filter(o => !existingPOs.has(o.po));
-
-    if(!newOrders.length){
-      toast('📧 All orders already in Expected Orders','ok');
-      return;
-    }
-
-    let added = 0;
-    newOrders.forEach(o => {
-      expectedOrders.push({
-        id: 'exp_' + Date.now() + '_' + Math.random().toString(36).slice(2,6),
-        vendor: o.vendor,
-        date: o.date,
-        notes: 'PO #' + o.po,
-        poNumber: o.po,
-        createdBy: currentUser?.name||'Gmail Import',
-        createdAt: new Date().toISOString(),
-        isExpected: true,
-        matched: false,
-        fromGmail: true
+    // Whether Web App URL is set or not — always refresh from Supabase
+    // Google Apps Script nightly job may have already run
+    const {data} = await supa.from('settings').select('value').eq('key','expected_orders').maybeSingle();
+    if(data?.value){
+      const cloudExp = JSON.parse(data.value);
+      // Merge cloud + local — cloud has new ones, local has the injected ones
+      const localIds = new Set(expectedOrders.map(e=>e.id));
+      const localPOs = new Set(expectedOrders.map(e=>e.poNumber).filter(Boolean));
+      // Add cloud orders not already in local
+      const toMerge = cloudExp.filter(e=>
+        !localIds.has(e.id) &&
+        !localPOs.has(e.poNumber) &&
+        !_deletedExpIds.has(e.id) // never re-add deleted orders
+      );
+      const before = expectedOrders.length;
+      expectedOrders = [...expectedOrders, ...toMerge];
+      // Deduplicate final list by PO# then vendor+date
+      const seenPO = new Set(); const seenVD = new Set();
+      expectedOrders = expectedOrders.filter(e=>{
+        if(e.poNumber){ if(seenPO.has(e.poNumber)) return false; seenPO.add(e.poNumber); return true; }
+        const k=(e.vendor||'').toLowerCase()+'|'+(e.date||''); if(seenVD.has(k)) return false; seenVD.add(k); return true;
       });
-      added++;
-    });
-
-    if(added > 0){
-      saveExpected();
+      localStorage.setItem('ck_expected', JSON.stringify(expectedOrders));
+      // Save merged list back to Supabase so all devices are in sync
+      sbSaveExpected();
       renderEmployee();
-      toast(`📧 Imported ${added} new order${added!==1?'s':''} as Expected Orders`, 'ok');
+      const newCount = expectedOrders.length - before;
+      toast(newCount > 0 ? `📧 ${newCount} new order${newCount!==1?'s':''} synced from Gmail` : '📧 All orders already loaded', 'ok');
+    } else {
+      toast('📧 No orders in Supabase yet — orders will appear after nightly sync','wrn');
     }
-
   }catch(e){
-    console.error('Gmail import error:', e);
-    toast('⚠️ Gmail import failed: ' + e.message, 'err');
+    console.error('Import error:', e);
+    toast('⚠️ Import failed: ' + e.message, 'err');
   } finally {
     if(btn){ btn.textContent='📧 Import Orders'; btn.disabled=false; }
   }
@@ -2525,6 +2486,20 @@ let expectedOrders = JSON.parse(localStorage.getItem('ck_expected')||'[]');
 let vendorMaster = ["7UP","ABSOLUTE","ADVANCE DISTRIBUTORS","AFAM","ALICIA - KJ WHOLESALE","ANNIE","ASAD","AVIANCE","BBIM","BEAUTIFUL DAY TRADING","BEAUTY HAIR WHOLESALE","BEAUTY PLUS","BEBE GROUP","BEE SALES","BESHE","BIG MAMA","BKT TRADING","BLACK CALA","BLACK&BOSSIE","BLUE OCEAN","BOHYME","C&CC","C&L","CHADE","CLEARANCE","COSMO BEAUTY SUPPLY","DAMOA","DASO TRADING","DO NOT USE","DODO FASHION","DOLLAR","EBIN","ELTON","FASHION WORLD","FATHER AND DAUGHTER","FOXY SILVER","FRIES BRO","FRITOS","GABRIELLA","GALERIE","GNS TRADING","GOLDSTAR","GRACE IMPORT","GREIS","GRIP TIGHT","GRIPPO","H MART","H2PRO","HAIR HA","HAIR PLUS","HAIR SOUTH INC","HAIR TREND","HAIRLAND","HALF BUNDLE","HALO","HARLEM125","HEAVENLY SCENTS","HINES  & CLEAR","HUSMAN","HW BEAUTY PRO","ICE","ITS A WIG","J & A IMPORT","J CLASS","JC BEAUTY","JINNY BEAUTY","JK TRADING","JOBNOM","JOON TRADING DIETER TEA","JS BEAUTY EXPERT INC","JUJU COLLECTION","KARA HAIR FASHION","KIRGIN CORP","KISS","KLOSTERMAN","KN WHOLESALE","KOEM ENTERPRISES INC","KONEX","KROGER","LA GIRL","LAFLARE","LAUDIC","LEE JEWELRY","LENZ OUTLET","LITTLE DEBBIE","LOG IN APPAREL INC","LUV SPORTS","MANE CONCEPT","MASTERPIECE","MAYDE","MIAMI HAIR","MIDWAY","MINAM TRADING","MISA TRADING","MISS BOND","MISS LASHES","MISUNG","MONEY 4 U","MOTOWN ORADELL","NACKTAS LLC","NATIONAL TOBACCO COMPANY","NEWYORK SUNGLASSES","NICKA K","NOBLESSE","NOVA","NOVA COLLECTION","NUUNCHI INC","OTHER","OUR HEAVENLY SCENTS","OUTRE","PANA LINE","PEACH TOWN","PEPSI","PETRA","PK BEAUTY","PNM TRADING","PNW GLOBAL","POS VENDOR","PRECISION OPTICAL","PRIMA COLLECTION","R&B COLLECTION","R&R CORP","REAL BEAUTY","RED","RED CARPET","RED OWL","RIAH HAIR","RICKING PAPER - JOSHEN","ROYAL BEAUTY","SALE","SAMS","SATYA WHOLESALE","SAVE ME","SENSATIONNEL","SENSUAL COLLECTION","SHA","SHAKE-N-GO","SHK TRADING","SIGNATURE LOOKS INC","SILKY HAIR","SK WIRELESS","SKY TRADING","SM BEAUTY","SO PRETTY","SP IMPORT","SPICE SUPREME","STAGNARO","SUNFLOWER","SUNFLOWER - HOLLYWOOD CONTACT","T&J MAX","TEAM MODERN","TEST","THE WIG","TOPS","TRANSFER","TRI STATE","TRUE COLOR","UNIVERSAL BEAUTY","US HAIR","US MERCHANDISE","VALUE SPOT","VANESSA","VIVACE","VIVICA FOX","VOG NEW YORK","WINK O LASH","YJ WHOLESALE","YOUNGS FASHION","YSU"];
 
 function saveExpected(){
+  // Deduplicate before saving
+  const seenPO2 = new Set();
+  const seenVD2 = new Set();
+  expectedOrders = expectedOrders.filter(e=>{
+    if(e.poNumber){
+      if(seenPO2.has(e.poNumber)) return false;
+      seenPO2.add(e.poNumber);
+      return true;
+    }
+    const vdKey = (e.vendor||'').toLowerCase()+'|'+(e.date||'');
+    if(seenVD2.has(vdKey)) return false;
+    seenVD2.add(vdKey);
+    return true;
+  });
   localStorage.setItem('ck_expected', JSON.stringify(expectedOrders));
   sbSaveExpected();
 }
@@ -2674,6 +2649,7 @@ function saveExpected_new(){
 
 function deleteExpected(expId){
   if(!canManageExpected()){ toast('Access required','wrn'); return; }
+  _markExpDeleted(expId); // track so sync doesn't re-add it
   expectedOrders = expectedOrders.filter(x=>x.id!==expId);
   saveExpected();
   renderEmployee();
@@ -2739,7 +2715,7 @@ function confirmMatch(expId, invoiceId){
 // Auto-match: called after each invoice upload
 function checkAutoMatch(newInv){
   const invVendor = (newInv.vendor||'').toUpperCase().trim();
-  const invDate = new Date(newInv.date||newInv.addedAt);
+  const invDate = parseDate(newInv.date||newInv.addedAt);
   if(isNaN(invDate)) return;
 
   // Find expected orders with same/similar vendor within ±4 days
@@ -2757,7 +2733,7 @@ function checkAutoMatch(newInv){
     if(exp.matched) return false;
     const expVendor = (exp.vendor||'').toUpperCase().trim();
     if(!_vendorMatch(invVendor, expVendor)) return false;
-    const expDate = new Date(exp.date);
+    const expDate = parseDate(exp.date);
     if(isNaN(expDate)) return false;
     return Math.abs(expDate - invDate) <= 6 * 86400000; // ±6 day window
   });
@@ -2765,7 +2741,7 @@ function checkAutoMatch(newInv){
   if(!candidates.length) return;
 
   // If multiple matches, pick closest date
-  candidates.sort((a,b)=> Math.abs(new Date(a.date)-invDate) - Math.abs(new Date(b.date)-invDate));
+  candidates.sort((a,b)=> Math.abs(parseDate(a.date)-invDate) - Math.abs(parseDate(b.date)-invDate));
   const best = candidates[0];
 
   _autoMatchPending = {expId: best.id, inv: newInv};
@@ -3560,15 +3536,25 @@ function toggleAcc(id){
 }
 
 // ─── WEEKLY ───────────────────────────────────────────────────────────────────
-function getWkKey(date){const d=new Date(date);const day=d.getDay();const sun=new Date(d);sun.setDate(d.getDate()-day);return sun.toISOString().slice(0,10);}
-function getWkRange(date){const d=new Date(date);const day=d.getDay();const sun=new Date(d);sun.setDate(d.getDate()-day);const sat=new Date(sun);sat.setDate(sun.getDate()+6);return{start:sun,end:sat};}
+// Parse date string in either MM/DD/YYYY or ISO (YYYY-MM-DD) format
+function parseDate(str){
+  if(!str) return new Date('invalid');
+  const s = String(str).trim();
+  // MM/DD/YYYY
+  const mdy = s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+  if(mdy) return new Date(parseInt(mdy[3]), parseInt(mdy[1])-1, parseInt(mdy[2]));
+  // ISO or other — let browser parse
+  return new Date(s);
+}
+function getWkKey(date){const d=parseDate(date);const day=d.getDay();const sun=new Date(d);sun.setDate(d.getDate()-day);return sun.toISOString().slice(0,10);}
+function getWkRange(date){const d=parseDate(date);const day=d.getDay();const sun=new Date(d);sun.setDate(d.getDate()-day);const sat=new Date(sun);sat.setDate(sun.getDate()+6);return{start:sun,end:sat};}
 function fmtWkLabel(start,end){
   return start.toLocaleDateString('en-US',{month:'numeric',day:'numeric'})+' – '+end.toLocaleDateString('en-US',{month:'numeric',day:'numeric',year:'numeric'});
 }
 
 function renderWeekly(){
   const wrap=document.getElementById('weekWrap');
-  let data=[...invoices].filter(x=>x.date && !isNaN(new Date(x.date)) && !isArchived(x.id));
+  let data=[...invoices].filter(x=>x.date && !isNaN(parseDate(x.date)) && !isArchived(x.id));
   if(weekF!=='all'){const weeks=parseInt(weekF);const cut=new Date();cut.setDate(cut.getDate()-weeks*7);data=data.filter(x=>new Date(x.date)>=cut);}
   if(!data.length){wrap.innerHTML='<div style="padding:24px;text-align:center;color:var(--text3);font-size:13px;background:var(--surface);border-radius:10px;border:1px solid var(--border)">No invoice data to display</div>';return;}
   const wks={};
@@ -3770,19 +3756,21 @@ function renderEmpAlerts(){
 }
 
 function renderEmpKpi(){
-  const total=invoices.length;
-  const boxes=invoices.reduce((s,x)=>s+toNum(x.boxes),0);
-  const done=invoices.filter(x=>getStatus(x)==='complete').length;
-  document.getElementById('empCount').textContent=total;
-  document.getElementById('empBoxes').textContent=boxes;
-  document.getElementById('empDone').textContent=done;
-  document.getElementById('empDoneSub').textContent=`of ${total} invoice${total!==1?'s':''}`;
+  const activeInvs = invoices.filter(x=>!isArchived(x.id));
+  const total = activeInvs.length;
+  const totalWithExp = total + expectedOrders.length;
+  const boxes = activeInvs.reduce((s,x)=>s+toNum(x.boxes),0);
+  const done  = activeInvs.filter(x=>getStatus(x)==='complete').length;
+  document.getElementById('empCount').textContent = totalWithExp;
+  document.getElementById('empBoxes').textContent = boxes;
+  document.getElementById('empDone').textContent  = done;
+  document.getElementById('empDoneSub').textContent = `of ${totalWithExp} invoice${totalWithExp!==1?'s':''}`;
 }
 
 function renderEmpWeekly(){
   const wrap=document.getElementById('empWeekWrap');
   if(!wrap) return;
-  let data=[...invoices].filter(x=>x.date && !isNaN(new Date(x.date)) && !isArchived(x.id));
+  let data=[...invoices].filter(x=>x.date && !isNaN(parseDate(x.date)) && !isArchived(x.id));
 
   // Merge in expected orders (show even if no real invoices that week)
   const wks={};
@@ -3792,7 +3780,7 @@ function renderEmpWeekly(){
     wks[k].invs.push(x);
   });
   expectedOrders.forEach(exp=>{
-    if(!exp.date||isNaN(new Date(exp.date))) return;
+    if(!exp.date||isNaN(parseDate(exp.date))) return;
     const k=getWkKey(exp.date);
     if(!wks[k]){const{start,end}=getWkRange(exp.date);wks[k]={invs:[],exps:[],start,end};}
     wks[k].exps.push(exp);
@@ -3899,8 +3887,9 @@ function renderEmpWeekly(){
       <div class="week-hdr" data-wkkey="${key}" style="${hdrStyle}">
         <div class="week-label">${weekIcon} ${weekLabel}</div>
         <div class="week-pills">
-          <div class="week-pill">${wInvs.length} invoice${wInvs.length!==1?'s':''}</div>
-          <div class="week-pill boxes">📦 <strong>${wBoxes}</strong> expected</div>
+          <div class="week-pill">${wInvs.length + wExps.length} invoice${(wInvs.length+wExps.length)!==1?'s':''}</div>
+          ${wExps.length?`<div class="week-pill" style="color:#fcd34d">🔶 <strong>${wExps.length}</strong> expected</div>`:''}
+          <div class="week-pill boxes">📦 <strong>${wBoxes}</strong> expected boxes</div>
           <div class="week-pill boxes">📬 <strong>${wRcvd}</strong> received</div>
           <div class="week-pill done">✓ <strong>${wDone}</strong> complete</div>
           ${wPending?`<div class="week-pill"><strong style="color:#fcd34d">${wPending}</strong> pending</div>`:''}
@@ -3947,7 +3936,7 @@ function manualArchiveNow(){
   const currentWkKey = getWkKey(now.toISOString().slice(0,10));
   const wks = {};
   invoices.forEach(x => {
-    if(!x.date || isNaN(new Date(x.date))) return;
+    if(!x.date || isNaN(parseDate(x.date))) return;
     const k = getWkKey(x.date);
     if(!wks[k]){ const{start,end}=getWkRange(x.date); wks[k]={invs:[],start,end,key:k}; }
     wks[k].invs.push(x);
@@ -4170,21 +4159,23 @@ function exportArchiveXL(){
 }
 
 // ─── UTILS ────────────────────────────────────────────────────────────────────
-function ms(s){if(!s)return 0;const d=new Date(s);return isNaN(d)?0:d.getTime();}
+function ms(s){if(!s)return 0;const d=parseDate(s);return isNaN(d)?0:d.getTime();}
 function safeId(id){return String(id).replace(/[^a-zA-Z0-9_-]/g,'_');}
 function amt(s){if(!s)return 0;return parseFloat(String(s).replace(/[^0-9.]/g,''))||0;}
 function esc(s){return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');}
 function vcaps(s){return esc((s||'').toUpperCase());}
 function save(){
   _lastSaveTime = Date.now();
-  // Deduplicate before saving — prevent accumulation from bugs
-  const _saveSeen = new Set();
+  // Deduplicate before saving — id first, then vendor+invoice for re-uploads
+  const _saveSeenIds = new Set();
+  const _saveSeenVI = new Set();
   invoices = invoices.filter(x => {
-    const key = x.invoice_number
-      ? String(x.invoice_number).trim().toLowerCase()
-      : String(x.id).replace(/\./g,'_');
-    if(_saveSeen.has(key)) return false;
-    _saveSeen.add(key);
+    const xid = String(x.id).replace(/\./g,'_');
+    if(_saveSeenIds.has(xid)) return false;
+    _saveSeenIds.add(xid);
+    const inv = String(x.invoice_number||'').trim().toLowerCase().replace(/_fl$|_8$/,'');
+    const ven = String(x.vendor||'').trim().toLowerCase();
+    if(inv){ const vk=ven+'|'+inv; if(_saveSeenVI.has(vk)) return false; _saveSeenVI.add(vk); }
     return true;
   });
   localStorage.setItem('ck_inv',JSON.stringify(invoices));
@@ -4634,6 +4625,9 @@ function renderSettings(){
       'Receiving tab only'
     );
   }
+  // Populate Gmail Web App URL
+  const gasInput = document.getElementById('gasUrlInput');
+  if(gasInput) gasInput.value = localStorage.getItem('ck_gas_url')||'';
   // Hide add user section for non-admin
   const addSec = document.getElementById('addUserSection');
   if(addSec) addSec.style.display = currentUser?.role==='admin' ? '' : 'none';
@@ -4793,13 +4787,15 @@ updateKeyUI();
   if(!archived.length && localArchived.length) archived = localArchived;
 
   // Deduplicate local invoices[] immediately (fix accumulated duplicates)
-  const _initSeen = new Set();
+  const _initSeenIds = new Set();
+  const _initSeenVI = new Set();
   invoices = invoices.filter(x => {
-    const key = x.invoice_number
-      ? String(x.invoice_number).trim().toLowerCase()
-      : String(x.id).replace(/\./g,'_');
-    if(_initSeen.has(key)) return false;
-    _initSeen.add(key);
+    const xid = String(x.id).replace(/\./g,'_');
+    if(_initSeenIds.has(xid)) return false;
+    _initSeenIds.add(xid);
+    const inv = String(x.invoice_number||'').trim().toLowerCase().replace(/_fl$|_8$/,'');
+    const ven = String(x.vendor||'').trim().toLowerCase();
+    if(inv){ const vk=ven+'|'+inv; if(_initSeenVI.has(vk)) return false; _initSeenVI.add(vk); }
     return true;
   });
 
