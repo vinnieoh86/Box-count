@@ -2506,22 +2506,19 @@ async function gmailImportOrders(forceRefresh=false){
 // ─── EXPECTED ORDERS ──────────────────────────────────────────────────────────
 let expectedOrders = JSON.parse(localStorage.getItem('ck_expected')||'[]');
 
-  // ─── PERMANENT ORDER SEED (runs once, seeds Supabase) ───────────────────────
+  // ─── ORDER SEED v3 (seeds Supabase once per device) ─────────────────────────
   (function(){
-    if(localStorage.getItem('ck_exp_seeded_v2')) return; // already done
-    const _seed = [{"id":"exp_perm_1415_iwfikl","vendor":"VOG NEW YORK","date":"04/15/2026","notes":"PO #1415","poNumber":"1415","createdBy":"Gmail Import","createdAt":"2026-04-15T17:10:00.000Z","isExpected":true,"matched":false,"fromGmail":true},{"id":"exp_perm_1414_8jifkw","vendor":"SKY TRADING","date":"04/15/2026","notes":"PO #1414","poNumber":"1414","createdBy":"Gmail Import","createdAt":"2026-04-15T17:10:00.000Z","isExpected":true,"matched":false,"fromGmail":true},{"id":"exp_perm_1413_s4ezuk","vendor":"SHAKE-N-GO","date":"04/15/2026","notes":"PO #1413","poNumber":"1413","createdBy":"Gmail Import","createdAt":"2026-04-15T17:10:00.000Z","isExpected":true,"matched":false,"fromGmail":true},{"id":"exp_perm_1412_1hit26","vendor":"SENSATIONNEL","date":"04/15/2026","notes":"PO #1412","poNumber":"1412","createdBy":"Gmail Import","createdAt":"2026-04-15T17:10:00.000Z","isExpected":true,"matched":false,"fromGmail":true},{"id":"exp_perm_1411_nrbgwp","vendor":"RED","date":"04/15/2026","notes":"PO #1411","poNumber":"1411","createdBy":"Gmail Import","createdAt":"2026-04-15T17:10:00.000Z","isExpected":true,"matched":false,"fromGmail":true},{"id":"exp_perm_1410_v79gk8","vendor":"MAYDE","date":"04/15/2026","notes":"PO #1410","poNumber":"1410","createdBy":"Gmail Import","createdAt":"2026-04-15T17:10:00.000Z","isExpected":true,"matched":false,"fromGmail":true},{"id":"exp_perm_1409_a5n7gk","vendor":"KISS","date":"04/15/2026","notes":"PO #1409","poNumber":"1409","createdBy":"Gmail Import","createdAt":"2026-04-15T17:10:00.000Z","isExpected":true,"matched":false,"fromGmail":true},{"id":"exp_perm_1408_t2vz9t","vendor":"EBIN","date":"04/15/2026","notes":"PO #1408","poNumber":"1408","createdBy":"Gmail Import","createdAt":"2026-04-15T17:10:00.000Z","isExpected":true,"matched":false,"fromGmail":true},{"id":"exp_perm_1407_ov9fk9","vendor":"MIDWAY","date":"04/15/2026","notes":"PO #1407","poNumber":"1407","createdBy":"Gmail Import","createdAt":"2026-04-15T17:10:00.000Z","isExpected":true,"matched":false,"fromGmail":true},{"id":"exp_perm_1406_3ijwxs","vendor":"MANE CONCEPT","date":"04/15/2026","notes":"PO #1406","poNumber":"1406","createdBy":"Gmail Import","createdAt":"2026-04-15T17:10:00.000Z","isExpected":true,"matched":false,"fromGmail":true}];
-    const _existingPOs = new Set(expectedOrders.map(e=>e.poNumber).filter(Boolean));
-    let _added = 0;
-    _seed.forEach(o=>{
-      if(!_existingPOs.has(o.poNumber)){ expectedOrders.push(o); _added++; }
-    });
-    if(_added > 0){
+    if(localStorage.getItem('ck_exp_v3')) return;
+    const _s = [{"id":"exp_v3_1415","vendor":"VOG NEW YORK","date":"04/15/2026","notes":"PO #1415","poNumber":"1415","createdBy":"Gmail Import","createdAt":"2026-04-15T17:10:00.000Z","isExpected":true,"matched":false,"fromGmail":true},{"id":"exp_v3_1414","vendor":"SKY TRADING","date":"04/15/2026","notes":"PO #1414","poNumber":"1414","createdBy":"Gmail Import","createdAt":"2026-04-15T17:10:00.000Z","isExpected":true,"matched":false,"fromGmail":true},{"id":"exp_v3_1413","vendor":"SHAKE-N-GO","date":"04/15/2026","notes":"PO #1413","poNumber":"1413","createdBy":"Gmail Import","createdAt":"2026-04-15T17:10:00.000Z","isExpected":true,"matched":false,"fromGmail":true},{"id":"exp_v3_1412","vendor":"SENSATIONNEL","date":"04/15/2026","notes":"PO #1412","poNumber":"1412","createdBy":"Gmail Import","createdAt":"2026-04-15T17:10:00.000Z","isExpected":true,"matched":false,"fromGmail":true},{"id":"exp_v3_1411","vendor":"RED","date":"04/15/2026","notes":"PO #1411","poNumber":"1411","createdBy":"Gmail Import","createdAt":"2026-04-15T17:10:00.000Z","isExpected":true,"matched":false,"fromGmail":true},{"id":"exp_v3_1410","vendor":"MAYDE","date":"04/15/2026","notes":"PO #1410","poNumber":"1410","createdBy":"Gmail Import","createdAt":"2026-04-15T17:10:00.000Z","isExpected":true,"matched":false,"fromGmail":true},{"id":"exp_v3_1409","vendor":"KISS","date":"04/15/2026","notes":"PO #1409","poNumber":"1409","createdBy":"Gmail Import","createdAt":"2026-04-15T17:10:00.000Z","isExpected":true,"matched":false,"fromGmail":true},{"id":"exp_v3_1408","vendor":"EBIN","date":"04/15/2026","notes":"PO #1408","poNumber":"1408","createdBy":"Gmail Import","createdAt":"2026-04-15T17:10:00.000Z","isExpected":true,"matched":false,"fromGmail":true},{"id":"exp_v3_1407","vendor":"MIDWAY","date":"04/15/2026","notes":"PO #1407","poNumber":"1407","createdBy":"Gmail Import","createdAt":"2026-04-15T17:10:00.000Z","isExpected":true,"matched":false,"fromGmail":true},{"id":"exp_v3_1406","vendor":"MANE CONCEPT","date":"04/15/2026","notes":"PO #1406","poNumber":"1406","createdBy":"Gmail Import","createdAt":"2026-04-15T17:10:00.000Z","isExpected":true,"matched":false,"fromGmail":true}];
+    const _pos = new Set(expectedOrders.map(e=>e.poNumber).filter(Boolean));
+    let _n = 0;
+    _s.forEach(o=>{ if(!_pos.has(o.poNumber)){ expectedOrders.push(o); _n++; } });
+    if(_n > 0){
       localStorage.setItem('ck_expected', JSON.stringify(expectedOrders));
-      // Push to Supabase after app loads
-      setTimeout(()=>{ sbSaveExpected(); }, 2000);
-      console.log('Seeded', _added, 'orders to Supabase');
+      setTimeout(()=>sbSaveExpected(), 3000); // push to Supabase after app loads
+      console.log('Seeded', _n, 'orders');
     }
-    localStorage.setItem('ck_exp_seeded_v2','1');
+    localStorage.setItem('ck_exp_v3','1');
   })();
   // ─── END SEED ────────────────────────────────────────────────────────────────
 
