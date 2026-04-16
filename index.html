@@ -3251,7 +3251,7 @@ function renderTbl(){
     <td colspan="2"></td>
   </tr>`;
   tbody.innerHTML=html;
-  document.getElementById('exportBtn').disabled=(_active.length===0);
+  document.getElementById('exportBtn').disabled=(data.length===0);
 }
 
 function toggleVendorGroup(vid, hdrEl){
