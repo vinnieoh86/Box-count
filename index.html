@@ -472,7 +472,7 @@ tbody tr:hover .delbtn,tbody tr:hover .editbtn{opacity:1;}
         <span id="syncTxt">Syncing...</span>
       </div>
       <button class="xbtn" onclick="manualSync()" title="Sync" style="background:transparent;border:1px solid rgba(255,255,255,0.2);color:#fff;padding:5px 10px;border-radius:6px;font-size:11px;cursor:pointer">↻ Sync</button>
-      <button id="gmailImportBtn" onclick="gmailImportOrders()" title="Import Expected Orders from Gmail" style="display:none;background:#f59e0b;border:none;color:#fff;padding:5px 10px;border-radius:6px;font-size:11px;font-weight:600;cursor:pointer;font-family:Inter,sans-serif">📧 Import Orders</button>
+      <button id="gmailImportBtn" onclick="gmailImportOrders(false)" oncontextmenu="event.preventDefault();gmailImportOrders(true)" title="Import Orders — Right-click to force full refresh" style="display:none;background:#f59e0b;border:none;color:#fff;padding:5px 10px;border-radius:6px;font-size:11px;font-weight:600;cursor:pointer;font-family:Inter,sans-serif">📧 Import Orders</button>
       <div class="api-pill" onclick="openM('aliasModal')" title="Manage vendor aliases">⚙ Aliases</div>
       <div class="api-pill" id="adminBtn" style="cursor:default;display:none">👤 <span id="adminBtnLabel">—</span></div>
       <button id="lockBtn" onclick="pinLogout()" title="Lock screen" style="display:none;background:rgba(255,255,255,.15);border:1px solid rgba(255,255,255,.25);color:#fff;padding:5px 10px;border-radius:6px;font-size:11px;cursor:pointer;font-family:Inter,sans-serif">🔒 Lock</button>
@@ -2409,52 +2409,64 @@ function processOrderImportPaste(){
   }
 }
 
-async function gmailImportOrders(){
+async function gmailImportOrders(forceRefresh=false){
   if(!canManageExpected()){ toast('Admin or Secondary access required','wrn'); return; }
 
-  // Get the Web App URL from settings
   const btn = document.getElementById('gmailImportBtn');
-  if(btn){ btn.textContent='📧 Checking...'; btn.disabled=true; }
+  if(btn){ btn.textContent = forceRefresh ? '📧 Force Refreshing...' : '📧 Checking...'; btn.disabled=true; }
 
   try{
     const webAppUrl = localStorage.getItem('ck_gas_url') || '';
-
     if(webAppUrl){
-      // Web App URL set — call Google Apps Script directly
-      // Use no-cors (can't read response but script runs server-side)
       await fetch(webAppUrl, { method:'GET', mode:'no-cors' }).catch(()=>{});
-      // Wait for script to write to Supabase (usually <2s)
       await new Promise(r => setTimeout(r, 3000));
     }
-    // Whether Web App URL is set or not — always refresh from Supabase
-    // Google Apps Script nightly job may have already run
+
     const {data} = await supa.from('settings').select('value').eq('key','expected_orders').maybeSingle();
-    if(data?.value){
-      const cloudExp = JSON.parse(data.value);
-      // Merge cloud + local — cloud has new ones, local has the injected ones
-      const localIds = new Set(expectedOrders.map(e=>e.id));
-      const localPOs = new Set(expectedOrders.map(e=>e.poNumber).filter(Boolean));
-      // Add cloud orders not already in local
-      const toMerge = cloudExp.filter(e=>
-        !localIds.has(e.id) &&
-        !_deletedExpIds.has(e.id) // block exact deleted IDs only
-      );
-      const before = expectedOrders.length;
-      expectedOrders = [...expectedOrders, ...toMerge];
-      // Deduplicate final list by PO# then vendor+date
-      const seenPO = new Set(); const seenVD = new Set();
-      expectedOrders = expectedOrders.filter(e=>{
-        if(e.poNumber){ if(seenPO.has(e.poNumber)) return false; seenPO.add(e.poNumber); return true; }
-        const k=(e.vendor||'').toLowerCase()+'|'+(e.date||''); if(seenVD.has(k)) return false; seenVD.add(k); return true;
+    if(!data?.value){ toast('📧 No orders in Supabase yet','wrn'); return; }
+
+    const cloudExp = JSON.parse(data.value);
+
+    if(forceRefresh){
+      // Force refresh — combine cloud + local, dedup, save back to Supabase
+      // This ensures nothing is lost from either source
+      localStorage.removeItem('ck_deleted_exp');
+      _deletedExpIds.clear();
+      // Union of cloud + local
+      const cloudIds = new Set(cloudExp.map(e=>e.id));
+      const localOnly = expectedOrders.filter(e=>!cloudIds.has(e.id));
+      const combined = [...cloudExp, ...localOnly];
+      // Deduplicate by PO# then vendor+date
+      const seenPO2=new Set(); const seenVD2=new Set();
+      expectedOrders = combined.filter(e=>{
+        if(e.poNumber){ if(seenPO2.has(e.poNumber)) return false; seenPO2.add(e.poNumber); return true; }
+        const k=(e.vendor||'').toLowerCase()+'|'+(e.date||''); if(seenVD2.has(k)) return false; seenVD2.add(k); return true;
       });
       localStorage.setItem('ck_expected', JSON.stringify(expectedOrders));
-      sbSaveExpected();
+      // Save merged result back to Supabase (fire and forget — don't block UI)
+      sbSaveExpected().catch(e=>console.warn('save error:', e.message));
       renderEmployee();
-      const added = expectedOrders.length - before;
-      toast(added > 0 ? `📧 ${added} new order${added!==1?'s':''} synced from Gmail` : '📧 Expected orders up to date', 'ok');
-    } else {
-      toast('📧 No orders in Supabase yet — orders will appear after nightly sync','wrn');
+      toast(`📧 Refreshed — ${expectedOrders.length} orders loaded`, 'ok');
+      return;
     }
+
+    // Normal merge — add new cloud orders not already in local
+    const localIds = new Set(expectedOrders.map(e=>e.id));
+    const toMerge = cloudExp.filter(e => !localIds.has(e.id) && !_deletedExpIds.has(e.id));
+    const before = expectedOrders.length;
+    expectedOrders = [...expectedOrders, ...toMerge];
+    // Deduplicate by PO# then vendor+date
+    const seenPO=new Set(); const seenVD=new Set();
+    expectedOrders = expectedOrders.filter(e=>{
+      if(e.poNumber){ if(seenPO.has(e.poNumber)) return false; seenPO.add(e.poNumber); return true; }
+      const k=(e.vendor||'').toLowerCase()+'|'+(e.date||''); if(seenVD.has(k)) return false; seenVD.add(k); return true;
+    });
+    localStorage.setItem('ck_expected', JSON.stringify(expectedOrders));
+    sbSaveExpected().catch(e=>console.warn('save error:',e.message));
+    renderEmployee();
+    const added = expectedOrders.length - before;
+    toast(added > 0 ? `📧 ${added} new order${added!==1?'s':''} synced` : '📧 Expected orders up to date', 'ok');
+
   }catch(e){
     console.error('Import error:', e);
     toast('⚠️ Import failed: ' + e.message, 'err');
@@ -2466,18 +2478,25 @@ async function gmailImportOrders(){
 // ─── EXPECTED ORDERS ──────────────────────────────────────────────────────────
 let expectedOrders = JSON.parse(localStorage.getItem('ck_expected')||'[]');
 
-  // ─── ONE-TIME GMAIL ORDER INJECT (Apr 15 2026) ───
-  // These 10 orders were read from Gmail and injected server-side
+  // ─── PERMANENT ORDER SEED (runs once, seeds Supabase) ───────────────────────
   (function(){
-    const _gmailOrders = [{"id":"exp_1776294286045_yw8md3","vendor":"VOG NEW YORK","date":"04/15/2026","notes":"PO #1415","poNumber":"1415","createdBy":"Gmail Import","createdAt":"2026-04-15T17:10:00.000Z","isExpected":true,"matched":false,"fromGmail":true},{"id":"exp_1776294286047_ndsuxr","vendor":"SKY TRADING","date":"04/15/2026","notes":"PO #1414","poNumber":"1414","createdBy":"Gmail Import","createdAt":"2026-04-15T17:10:00.000Z","isExpected":true,"matched":false,"fromGmail":true},{"id":"exp_1776294286049_ig58uw","vendor":"SHAKE-N-GO","date":"04/15/2026","notes":"PO #1413","poNumber":"1413","createdBy":"Gmail Import","createdAt":"2026-04-15T17:10:00.000Z","isExpected":true,"matched":false,"fromGmail":true},{"id":"exp_1776294286050_1amjb8","vendor":"SENSATIONNEL","date":"04/15/2026","notes":"PO #1412","poNumber":"1412","createdBy":"Gmail Import","createdAt":"2026-04-15T17:10:00.000Z","isExpected":true,"matched":false,"fromGmail":true},{"id":"exp_1776294286051_7gs53t","vendor":"RED","date":"04/15/2026","notes":"PO #1411","poNumber":"1411","createdBy":"Gmail Import","createdAt":"2026-04-15T17:10:00.000Z","isExpected":true,"matched":false,"fromGmail":true},{"id":"exp_1776294286052_ukmcgp","vendor":"MAYDE","date":"04/15/2026","notes":"PO #1410","poNumber":"1410","createdBy":"Gmail Import","createdAt":"2026-04-15T17:10:00.000Z","isExpected":true,"matched":false,"fromGmail":true},{"id":"exp_1776294286053_zk92qr","vendor":"KISS","date":"04/15/2026","notes":"PO #1409","poNumber":"1409","createdBy":"Gmail Import","createdAt":"2026-04-15T17:10:00.000Z","isExpected":true,"matched":false,"fromGmail":true},{"id":"exp_1776294286054_twta8d","vendor":"EBIN","date":"04/15/2026","notes":"PO #1408","poNumber":"1408","createdBy":"Gmail Import","createdAt":"2026-04-15T17:10:00.000Z","isExpected":true,"matched":false,"fromGmail":true},{"id":"exp_1776294286055_aas011","vendor":"MIDWAY","date":"04/15/2026","notes":"PO #1407","poNumber":"1407","createdBy":"Gmail Import","createdAt":"2026-04-15T17:10:00.000Z","isExpected":true,"matched":false,"fromGmail":true},{"id":"exp_1776294286056_2v6uwc","vendor":"MANE CONCEPT","date":"04/15/2026","notes":"PO #1406","poNumber":"1406","createdBy":"Gmail Import","createdAt":"2026-04-15T17:10:00.000Z","isExpected":true,"matched":false,"fromGmail":true}];
+    if(localStorage.getItem('ck_exp_seeded_v2')) return; // already done
+    const _seed = [{"id":"exp_perm_1415_iwfikl","vendor":"VOG NEW YORK","date":"04/15/2026","notes":"PO #1415","poNumber":"1415","createdBy":"Gmail Import","createdAt":"2026-04-15T17:10:00.000Z","isExpected":true,"matched":false,"fromGmail":true},{"id":"exp_perm_1414_8jifkw","vendor":"SKY TRADING","date":"04/15/2026","notes":"PO #1414","poNumber":"1414","createdBy":"Gmail Import","createdAt":"2026-04-15T17:10:00.000Z","isExpected":true,"matched":false,"fromGmail":true},{"id":"exp_perm_1413_s4ezuk","vendor":"SHAKE-N-GO","date":"04/15/2026","notes":"PO #1413","poNumber":"1413","createdBy":"Gmail Import","createdAt":"2026-04-15T17:10:00.000Z","isExpected":true,"matched":false,"fromGmail":true},{"id":"exp_perm_1412_1hit26","vendor":"SENSATIONNEL","date":"04/15/2026","notes":"PO #1412","poNumber":"1412","createdBy":"Gmail Import","createdAt":"2026-04-15T17:10:00.000Z","isExpected":true,"matched":false,"fromGmail":true},{"id":"exp_perm_1411_nrbgwp","vendor":"RED","date":"04/15/2026","notes":"PO #1411","poNumber":"1411","createdBy":"Gmail Import","createdAt":"2026-04-15T17:10:00.000Z","isExpected":true,"matched":false,"fromGmail":true},{"id":"exp_perm_1410_v79gk8","vendor":"MAYDE","date":"04/15/2026","notes":"PO #1410","poNumber":"1410","createdBy":"Gmail Import","createdAt":"2026-04-15T17:10:00.000Z","isExpected":true,"matched":false,"fromGmail":true},{"id":"exp_perm_1409_a5n7gk","vendor":"KISS","date":"04/15/2026","notes":"PO #1409","poNumber":"1409","createdBy":"Gmail Import","createdAt":"2026-04-15T17:10:00.000Z","isExpected":true,"matched":false,"fromGmail":true},{"id":"exp_perm_1408_t2vz9t","vendor":"EBIN","date":"04/15/2026","notes":"PO #1408","poNumber":"1408","createdBy":"Gmail Import","createdAt":"2026-04-15T17:10:00.000Z","isExpected":true,"matched":false,"fromGmail":true},{"id":"exp_perm_1407_ov9fk9","vendor":"MIDWAY","date":"04/15/2026","notes":"PO #1407","poNumber":"1407","createdBy":"Gmail Import","createdAt":"2026-04-15T17:10:00.000Z","isExpected":true,"matched":false,"fromGmail":true},{"id":"exp_perm_1406_3ijwxs","vendor":"MANE CONCEPT","date":"04/15/2026","notes":"PO #1406","poNumber":"1406","createdBy":"Gmail Import","createdAt":"2026-04-15T17:10:00.000Z","isExpected":true,"matched":false,"fromGmail":true}];
     const _existingPOs = new Set(expectedOrders.map(e=>e.poNumber).filter(Boolean));
     let _added = 0;
-    _gmailOrders.forEach(o=>{
+    _seed.forEach(o=>{
       if(!_existingPOs.has(o.poNumber)){ expectedOrders.push(o); _added++; }
     });
-    if(_added > 0){ saveExpected(); console.log('Gmail inject: added', _added, 'orders'); }
+    if(_added > 0){
+      localStorage.setItem('ck_expected', JSON.stringify(expectedOrders));
+      // Push to Supabase after app loads
+      setTimeout(()=>{ sbSaveExpected(); }, 2000);
+      console.log('Seeded', _added, 'orders to Supabase');
+    }
+    localStorage.setItem('ck_exp_seeded_v2','1');
   })();
-  // ─── END GMAIL INJECT ───
+  // ─── END SEED ────────────────────────────────────────────────────────────────
+
 
 
 // Master vendor list — pre-loaded + user additions stored in Supabase
@@ -2503,12 +2522,16 @@ function saveExpected(){
 }
 
 async function sbSaveExpected(){
-  if(!expectedOrders.length){
-    await supa.from('settings').delete().eq('key','expected_orders');
-    return;
-  }
-  supa.from('settings').upsert({key:'expected_orders', value:JSON.stringify(expectedOrders)},{onConflict:'key'})
-    .catch(e=>console.warn('expected save error:',e.message));
+  try{
+    if(!expectedOrders.length){
+      await supa.from('settings').delete().eq('key','expected_orders');
+      return;
+    }
+    const payload = JSON.stringify(expectedOrders);
+    const {error} = await supa.from('settings')
+      .upsert({key:'expected_orders', value: payload},{onConflict:'key'});
+    if(error) console.warn('expected save error:', error.message);
+  }catch(e){ console.warn('sbSaveExpected error:', e.message); }
 }
 
 async function sbLoadExpected(){
