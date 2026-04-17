@@ -733,10 +733,12 @@ tbody tr:hover .delbtn,tbody tr:hover .editbtn{opacity:1;}
 
     <!-- Cloud sync -->
     <div style="background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:20px">
-      <div style="font-size:14px;font-weight:700;color:var(--navy);margin-bottom:4px">☁ Cloud Sync</div>
-      <div style="font-size:12px;color:var(--text3);margin-bottom:14px">Users are saved to cloud automatically. If another device shows wrong users, force a sync here.</div>
-      <button onclick="forceSyncUsersToCloud()" style="background:var(--blue);color:#fff;border:none;padding:9px 20px;border-radius:7px;font-size:13px;font-weight:600;cursor:pointer">↑ Push Users to Cloud</button>
-    </div>
+    <div style="font-size:14px;font-weight:700;color:var(--navy);margin-bottom:4px">☁ Cloud Sync</div>
+    <div style="font-size:12px;color:var(--text3);margin-bottom:14px">Users are saved to cloud automatically. If another device shows wrong users, force a sync here.</div>
+    <button onclick="forceSyncUsersToCloud()" style="background:var(--blue);color:#fff;border:none;padding:9px 20px;border-radius:7px;font-size:13px;font-weight:600;cursor:pointer">↑ Push Users to Cloud</button>
+    <button onclick="forceSyncInvoicesToCloud()" style="background:var(--green);color:#fff;border:none;padding:9px 20px;border-radius:7px;font-size:13px;font-weight:600;cursor:pointer;margin-left:8px">↑ Push Invoices to Cloud</button>
+    <div style="font-size:11px;color:var(--text3);margin-top:10px;line-height:1.6">Use invoice push on the device that already shows the missing invoices. Other devices can then press Sync or wait for auto-sync.</div>
+  </div>
 
   </div>
 </div>
@@ -878,13 +880,19 @@ async function sbSaveInvoices(){
     uploaded_by: x.uploadedBy||'',
     manual_status: x.manualStatus||'',
   }));
-  const {error} = await supa.from('invoices').upsert(rows, {onConflict:'id'});
+  let {error} = await supa.from('invoices').upsert(rows, {onConflict:'id'});
+  if(error && /manual_status/i.test(error.message||'')){
+    console.warn('manual_status column missing; retrying invoice save without it');
+    const fallbackRows = rows.map(({manual_status, ...row}) => row);
+    ({error} = await supa.from('invoices').upsert(fallbackRows, {onConflict:'id'}));
+  }
   if(error){
     console.error('Supabase save error:', error.message);
-  } else {
-    // Clear dirty flags for IDs that were successfully saved
-    dirtySnapshot.forEach(id => _dirtyIds.delete(id));
+    throw error;
   }
+  // Clear dirty flags for IDs that were successfully saved
+  dirtySnapshot.forEach(id => _dirtyIds.delete(id));
+  return rows.length;
 }
 
 async function sbDeleteInvoice(id){
@@ -1313,9 +1321,16 @@ function closeM(id){document.getElementById(id).classList.remove('show');}
 
 // ─── API KEY ──────────────────────────────────────────────────────────────────
 function getKey(){
-  // Try localStorage first, then Supabase-synced key, then hardcoded fallback
-  return localStorage.getItem('ck_key') || 
-         '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';
+  // Shared key is loaded from Supabase into localStorage.
+  // No hardcoded fallback: stale embedded keys make parsing fail silently on every device.
+  return localStorage.getItem('ck_key') || '';
+}
+function handleInvalidApiKey(){
+  localStorage.removeItem('ck_key');
+  supa.from('settings').delete().eq('key','api_key').catch(()=>{});
+  updateKeyUI();
+  openM('apiMod');
+  toast('Anthropic API key is invalid or expired. Paste a new key to parse PDFs.','err');
 }
 function saveKey(){
   const inp = document.getElementById('apiIn');
@@ -1525,7 +1540,12 @@ async function callClaudeMultiImage(pages){
   });
   if(!r.ok){
     const eb=await r.json().catch(()=>({error:{message:'HTTP '+r.status}}));
-    throw new Error(eb.error?.message||'API error '+r.status);
+    const msg = eb.error?.message||'API error '+r.status;
+    if(r.status===401 || /invalid.*x-api-key|api key/i.test(msg)){
+      handleInvalidApiKey();
+      throw new Error('Invalid Anthropic API key');
+    }
+    throw new Error(msg);
   }
   const d = await r.json();
   if(!d.content||!d.content.length) throw new Error('Empty API response');
@@ -1875,6 +1895,10 @@ async function callClaude(file){
         const eb=await r.json().catch(()=>({error:{message:'HTTP '+r.status}}));
         const msg=eb.error?.message||'API error '+r.status;
         // 529 = Overloaded, 429 = Rate limit — both get exponential backoff
+        if(r.status===401 || /invalid.*x-api-key|api key/i.test(msg)){
+          handleInvalidApiKey();
+          throw new Error('Invalid Anthropic API key');
+        }
         if((r.status===529||r.status===429||r.status===500||r.status===503)&&attempt<maxAttempts){
           const wait=Math.min(8000*Math.pow(2,attempt-1),60000); // 8s, 16s, 32s, 60s
           toast(`⏳ API error ${r.status} — retrying in ${Math.round(wait/1000)}s (attempt ${attempt}/${maxAttempts})…`,'wrn');
@@ -2001,9 +2025,23 @@ async function callItemizedAPI(rec, prompt){
     });
     if(r.ok) break;
     if((r.status===529||r.status===500||r.status===429)&&_att<3){ await sleep(15000*_att); continue; }
-    const eb=await r.json().catch(()=>({})); throw new Error(eb.error?.message||'API '+r.status);
+    const eb=await r.json().catch(()=>({}));
+    const msg = eb.error?.message||'API '+r.status;
+    if(r.status===401 || /invalid.*x-api-key|api key/i.test(msg)){
+      handleInvalidApiKey();
+      throw new Error('Invalid Anthropic API key');
+    }
+    throw new Error(msg);
   }
-  if(!r.ok){ const eb=await r.json().catch(()=>({})); throw new Error(eb.error?.message||'API '+r.status); }
+  if(!r.ok){
+    const eb=await r.json().catch(()=>({}));
+    const msg = eb.error?.message||'API '+r.status;
+    if(r.status===401 || /invalid.*x-api-key|api key/i.test(msg)){
+      handleInvalidApiKey();
+      throw new Error('Invalid Anthropic API key');
+    }
+    throw new Error(msg);
+  }
   const d = await r.json();
   const tb = d.content.find(b=>b.type==='text');
   if(!tb) throw new Error('No API response');
@@ -2857,7 +2895,12 @@ async function _waitForInvoiceInSupabase(invId, expId, attempts){
       uploaded_by: inv.uploadedBy||'', manual_status: inv.manualStatus||'',
     };
 
-    const {error: writeErr} = await supa.from('invoices').upsert(row, {onConflict:'id'});
+    let {error: writeErr} = await supa.from('invoices').upsert(row, {onConflict:'id'});
+    if(writeErr && /manual_status/i.test(writeErr.message||'')){
+      console.warn('manual_status column missing; retrying direct invoice write without it');
+      const {manual_status, ...fallbackRow} = row;
+      ({error: writeErr} = await supa.from('invoices').upsert(fallbackRow, {onConflict:'id'}));
+    }
     if(writeErr){
       console.warn('Direct write error:', writeErr.message);
       // Write failed — retry up to 3 times with 2s gap
@@ -4232,10 +4275,15 @@ function save(){
   localStorage.setItem('ck_inv',JSON.stringify(invoices));
   sbSaveInvoices().then(()=>{
     const dot = document.getElementById('syncDot');
+    const txt = document.getElementById('syncTxt');
     if(dot){ dot.style.background='#10b981'; dot.title='Synced'; }
+    if(txt) txt.textContent = invoices.length + ' invoices';
   }).catch(()=>{
     const dot = document.getElementById('syncDot');
+    const txt = document.getElementById('syncTxt');
     if(dot){ dot.style.background='#ef4444'; dot.title='Sync failed'; }
+    if(txt) txt.textContent = 'Sync failed';
+    toast('Cloud save failed - check Supabase connection or table permissions','err');
   });
 }
 function toast(msg,type='ok'){const t=document.createElement('div');t.className=`toast ${type}`;t.textContent=msg;document.getElementById('toasts').appendChild(t);setTimeout(()=>t.remove(),4000);}
@@ -4374,6 +4422,31 @@ async function forceSyncUsersToCloud(){
     await supa.from('settings').upsert({key:'pin_users', value:JSON.stringify(pinUsers)},{onConflict:'key'});
     toast('✅ Users synced to cloud','ok');
   }catch(e){ toast('⚠️ Sync failed: '+e.message,'err'); }
+}
+
+async function forceSyncInvoicesToCloud(){
+  if(!currentUser || currentUser.role !== 'admin'){
+    toast('Admin only','wrn');
+    return;
+  }
+  if(!invoices.length){
+    toast('No local invoices to push','wrn');
+    return;
+  }
+  const dot = document.getElementById('syncDot');
+  const txt = document.getElementById('syncTxt');
+  try{
+    if(dot) dot.style.background = '#f59e0b';
+    if(txt) txt.textContent = 'Pushing invoices...';
+    const count = await sbSaveInvoices();
+    if(dot){ dot.style.background = '#10b981'; dot.title = 'Synced'; }
+    if(txt) txt.textContent = invoices.length + ' invoices';
+    toast('Pushed '+count+' invoice'+(count!==1?'s':'')+' to cloud','ok');
+  }catch(e){
+    if(dot){ dot.style.background = '#ef4444'; dot.title = 'Sync failed'; }
+    if(txt) txt.textContent = 'Sync failed';
+    toast('Invoice push failed: '+(e.message||e),'err');
+  }
 }
 
 function pinKey(digit){
