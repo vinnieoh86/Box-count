@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+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<!DOCTYPE html>
 <html lang="en">
 <head>
 <meta charset="UTF-8">
@@ -455,7 +455,7 @@ tbody tr:hover .delbtn,tbody tr:hover .editbtn{opacity:1;}
   .modal{width:95vw!important;max-height:90vh;overflow-y:auto;}
 }
 </style>
-<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.39.3/dist/umd/supabase.min.js" crossorigin="anonymous"></script>
 </head>
 <body>
 
@@ -4828,7 +4828,12 @@ updateKeyUI();
   if(localArchived.length){ archived = localArchived; _rebuildArchivedIds(); }
 
   // Then load Supabase — merge cloud data but preserve local RCV values
-  const ok = await sbLoadAll();
+  // Retry once on failure (Safari sometimes needs a second attempt)
+  let ok = await sbLoadAll();
+  if(!ok){
+    await new Promise(r=>setTimeout(r,2000));
+    ok = await sbLoadAll();
+  }
 
   // sbLoadAll handles the merge — localStorage is fallback if Supabase fails
   if(!invoices.length && localInvoices.length) invoices = localInvoices;
