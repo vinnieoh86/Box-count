@@ -929,10 +929,9 @@ async function sbSaveAliases(){
 
 async function sbLoadAll(){
   try{
-    // 1. Load archived weeks from Supabase — it's the authoritative source
-    // (sbSaveArchive now does delete+insert so Supabase always matches local)
+    // ── 1. Archived weeks ────────────────────────────────────────────
     const {data:arch} = await supa.from('archived_weeks').select('*');
-    if(arch !== null){ // null = request failed; [] = genuinely empty
+    if(arch !== null){
       archived = arch.map(r=>({
         weekKey:r.week_key, weekLabel:r.week_label,
         archivedAt:r.archived_at, invoices:r.invoices||[]
@@ -941,26 +940,21 @@ async function sbLoadAll(){
       _rebuildArchivedIds();
     }
 
-    // 2. Load active invoices — skip if merge is in progress
     if(_mergePending) return true;
 
+    // ── 2. Active invoices — Supabase is truth ───────────────────────
     const {data:inv, error:e1} = await supa.from('invoices').select('*').order('added_at',{ascending:false});
     if(e1) throw e1;
 
-    // Build set of archived invoice IDs to exclude from active list
+    // Build archived ID set
     const archivedIds = new Set();
-    archived.forEach(wk => {
-      wk.invoices.forEach(x => {
-        const id = String(x.id);
-        archivedIds.add(id);
-        archivedIds.add(id.replace(/^inv_/,''));
-        archivedIds.add('inv_'+id.replace(/^inv_/,''));
-        archivedIds.add(id.replace(/\./g,'_'));
-      });
-    });
+    archived.forEach(wk => wk.invoices.forEach(x => {
+      const id = String(x.id);
+      archivedIds.add(id); archivedIds.add(id.replace(/^inv_/,''));
+      archivedIds.add('inv_'+id.replace(/^inv_/,'')); archivedIds.add(id.replace(/\./g,'_'));
+    }));
 
     if(inv && inv.length > 0){
-      // Map cloud rows to invoice objects, excluding archived ones
       const cloudInvoices = inv.filter(r => !archivedIds.has(String(r.id))).map(r=>({
         id:r.id, vendor:r.vendor, date:r.date,
         invoice_number:r.invoice_number, filename:r.filename,
@@ -974,86 +968,69 @@ async function sbLoadAll(){
         uploadedBy:r.uploaded_by||'', manualStatus:r.manual_status||null,
       }));
 
-      // Merge: for each cloud invoice, overlay local RCV if local is non-zero
-      // (local is always written synchronously, cloud may lag)
-      const localNow = JSON.parse(localStorage.getItem('ck_inv')||'[]');
-      const merged = cloudInvoices.map(ci => {
-        if(_dirtyIds.size === 0) return ci; // no dirty fields — use cloud as-is
-        const cid = String(ci.id).replace(/\./g,'_');
-        const li = localNow.find(x => String(x.id).replace(/\./g,'_').replace(/^inv_/,'') === cid.replace(/^inv_/,''));
-        if(!li) return ci;
-        return {...ci,
-          rcv1:li.rcv1||ci.rcv1||'', rcv1ts:li.rcv1ts||ci.rcv1ts||'', rcv1by:li.rcv1by||ci.rcv1by||'',
-          rcv2:li.rcv2||ci.rcv2||'', rcv2ts:li.rcv2ts||ci.rcv2ts||'', rcv2by:li.rcv2by||ci.rcv2by||'',
-          rcv3:li.rcv3||ci.rcv3||'', rcv3ts:li.rcv3ts||ci.rcv3ts||'', rcv3by:li.rcv3by||ci.rcv3by||'',
-          manualStatus:li.manualStatus||ci.manualStatus||null,
-          boxes:li.boxes||ci.boxes,
-        };
-      });
+      // Only overlay dirty local RCV values (entered on THIS device, not yet saved)
+      if(_dirtyIds.size > 0){
+        const localNow = JSON.parse(localStorage.getItem('ck_inv')||'[]');
+        cloudInvoices.forEach(ci => {
+          const cid = String(ci.id).replace(/\./g,'_').replace(/^inv_/,'');
+          if(!_dirtyIds.has(ci.id) && !_dirtyIds.has(cid)) return;
+          const li = localNow.find(x => String(x.id).replace(/\./g,'_').replace(/^inv_/,'') === cid);
+          if(!li) return;
+          ci.rcv1=li.rcv1||ci.rcv1; ci.rcv1ts=li.rcv1ts||ci.rcv1ts; ci.rcv1by=li.rcv1by||ci.rcv1by;
+          ci.rcv2=li.rcv2||ci.rcv2; ci.rcv2ts=li.rcv2ts||ci.rcv2ts; ci.rcv2by=li.rcv2by||ci.rcv2by;
+          ci.rcv3=li.rcv3||ci.rcv3; ci.rcv3ts=li.rcv3ts||ci.rcv3ts; ci.rcv3by=li.rcv3by||ci.rcv3by;
+        });
+      }
 
-      // Add any local-only invoices from last 3 minutes not yet in cloud
+      // Add invoices uploaded on this device in last 3 mins not yet in cloud
       const cloudIds = new Set(cloudInvoices.map(x=>String(x.id).replace(/\./g,'_').replace(/^inv_/,'')));
-      const fresh = localNow.filter(x=>{
+      const localNow2 = JSON.parse(localStorage.getItem('ck_inv')||'[]');
+      const fresh = localNow2.filter(x=>{
         const xid = String(x.id).replace(/\./g,'_').replace(/^inv_/,'');
-        if(cloudIds.has(xid)) return false;
-        if(_deletedIds.has(String(x.id))) return false;
+        if(cloudIds.has(xid) || _deletedIds.has(String(x.id))) return false;
         return (Date.now() - new Date(x.addedAt||0).getTime()) < 180000;
       });
 
-      // Deduplicate: first by id, then by vendor+invoice_number for real duplicates
-      const seenIds = new Set();
-      const seenVendorInv = new Set();
-      const deduped = [...merged, ...fresh].filter(x => {
+      // Deduplicate by id then vendor+invoice
+      const seenIds = new Set(); const seenVI = new Set();
+      invoices = [...cloudInvoices, ...fresh].filter(x => {
         const xid = String(x.id).replace(/\./g,'_');
-        if(seenIds.has(xid)) return false;
-        seenIds.add(xid);
-        // Also dedup by vendor+invoice_number to catch re-uploaded duplicates
-        const inv = String(x.invoice_number||'').trim().toLowerCase().replace(/_fl$|_8$/,'');
+        if(seenIds.has(xid)) return false; seenIds.add(xid);
+        const inv2 = String(x.invoice_number||'').trim().toLowerCase().replace(/_fl$|_8$/,'');
         const ven = String(x.vendor||'').trim().toLowerCase();
-        if(inv){
-          const vk = ven+'|'+inv;
-          if(seenVendorInv.has(vk)) return false;
-          seenVendorInv.add(vk);
-        }
+        if(inv2){ const vk=ven+'|'+inv2; if(seenVI.has(vk)) return false; seenVI.add(vk); }
         return true;
       });
+      localStorage.setItem('ck_inv', JSON.stringify(invoices));
 
-      if(deduped.length > 0 || invoices.length === 0){
-        invoices = deduped;
-        localStorage.setItem('ck_inv', JSON.stringify(invoices));
-        // If we removed duplicates, clean up Supabase too
-        if(deduped.length < merged.length + fresh.length){
-          console.warn('Removed', (merged.length + fresh.length - deduped.length), 'duplicate invoices');
-          setTimeout(()=>sbSaveInvoices().catch(()=>{}), 2000);
-        }
-      } else {
-        console.warn('sbLoadAll: no active invoices from cloud, keeping local');
-      }
-    } else if(inv && inv.length === 0 && invoices.length > 0){
-      console.warn('sbLoadAll: cloud empty, keeping local');
+    } else if(inv && inv.length === 0 && invoices.length === 0){
+      // Both cloud and local empty — nothing to do
     }
+    // If cloud empty but local has data, keep local (offline mode)
+
+    // ── 3. Aliases ───────────────────────────────────────────────────
     const {data:al} = await supa.from('aliases').select('*');
     if(al && al.length){
       const saved = new Set(al.map(a=>a.from.toLowerCase().trim()));
       const missing = DEFAULT_ALIASES.filter(d=>!saved.has(d.from.toLowerCase().trim()));
       aliases = [...al.map(a=>({from:a.from,to:a.to})), ...missing];
     }
-    // Refresh expected orders — merge cloud additions into local
+
+    // ── 4. Expected orders — Supabase is truth ───────────────────────
     try{
       const {data:expSync} = await supa.from('settings').select('value').eq('key','expected_orders').maybeSingle();
       if(expSync?.value){
         const cloudExp = JSON.parse(expSync.value);
-        // Merge: add any cloud orders not already in local (by id or poNumber)
+        // Only add cloud orders not already in local AND not deleted
         const localIds2 = new Set(expectedOrders.map(e=>e.id));
-        const localPOs2 = new Set(expectedOrders.map(e=>e.poNumber).filter(Boolean));
-        const newFromCloud = cloudExp.filter(e=>
-          !localIds2.has(e.id) &&
-          !_deletedExpIds.has(e.id) // block exact deleted IDs only
-          // Note: allow same PO# with new ID (re-imported after delete)
-        );
+        const newFromCloud = cloudExp.filter(e=>!localIds2.has(e.id) && !_deletedExpIds.has(e.id));
         if(newFromCloud.length){
           expectedOrders = [...expectedOrders, ...newFromCloud];
           localStorage.setItem('ck_expected', JSON.stringify(expectedOrders));
+        }
+        // If local has MORE than cloud (e.g. deletions on this device), save back
+        if(expectedOrders.length < cloudExp.filter(e=>!_deletedExpIds.has(e.id)).length === false){
+          // local is already merged
         }
       }
     }catch(e){ console.warn('expected sync:', e.message); }
@@ -4834,23 +4811,21 @@ updateKeyUI();
   await loadPinUsersFromSupabase();
   try{ if(typeof buildUserSelect === 'function') buildUserSelect(); }catch(e){ console.warn('buildUserSelect error (non-fatal):', e.message); }
 
-  // Load localStorage FIRST — it's always written synchronously so it's newest
+  // Load from Supabase first — it's the single source of truth
+  // localStorage is only used as offline fallback
   const localInvoices = JSON.parse(localStorage.getItem('ck_inv')||'[]');
   const localArchived = JSON.parse(localStorage.getItem('ck_archived')||'[]');
-  if(localInvoices.length) invoices = localInvoices;
-  if(localArchived.length){ archived = localArchived; _rebuildArchivedIds(); }
 
-  // Then load Supabase — merge cloud data but preserve local RCV values
-  // Retry once on failure (Safari sometimes needs a second attempt)
+  // Then load Supabase — retry once on failure (Safari sometimes needs it)
   let ok = await sbLoadAll();
   if(!ok){
     await new Promise(r=>setTimeout(r,2000));
     ok = await sbLoadAll();
   }
 
-  // sbLoadAll handles the merge — localStorage is fallback if Supabase fails
+  // Only use localStorage if Supabase completely failed
   if(!invoices.length && localInvoices.length) invoices = localInvoices;
-  if(!archived.length && localArchived.length) archived = localArchived;
+  if(!archived.length && localArchived.length){ archived = localArchived; _rebuildArchivedIds(); }
 
   // Deduplicate local invoices[] immediately (fix accumulated duplicates)
   const _initSeenIds = new Set();
