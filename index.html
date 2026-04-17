@@ -926,10 +926,8 @@ const SUPA_URL = 'https://ucqathphqoijoadxqwja.supabase.co';
 const SUPA_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InVjcWF0aHBocW9pam9hZHhxd2phIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzU1OTY4NTEsImV4cCI6MjA5MTE3Mjg1MX0.Rp6eDFDrs1eVRC1w6ULrHBBqL9jBYHPoIS-xddvl9MQ';
 const supa = supabase.createClient(SUPA_URL, SUPA_KEY);
 
-async function sbSaveInvoices(){
-  if(!invoices.length) return;
-  const dirtySnapshot = new Set(_dirtyIds); // snapshot which IDs we're saving
-  const rows = invoices.map(x=>({
+function sbInvoiceRow(x){
+  return {
     id: String(x.id).replace(/\./g,'_'),
     vendor: x.vendor||'', date: x.date||'',
     invoice_number: x.invoice_number||'', filename: x.filename||'',
@@ -950,7 +948,20 @@ async function sbSaveInvoices(){
     rcv3by: x.rcv3by||'',
     uploaded_by: x.uploadedBy||'',
     manual_status: x.manualStatus||'',
-  }));
+  };
+}
+
+function sbIdVariants(id){
+  const raw = String(id);
+  const safe = raw.replace(/\./g,'_');
+  const base = raw.replace(/^inv_/,'');
+  return [...new Set([raw, safe, 'inv_'+base, base.replace(/\./g,'_')])];
+}
+
+async function sbSaveInvoices(){
+  if(!invoices.length) return;
+  const dirtySnapshot = new Set(_dirtyIds); // snapshot which IDs we're saving
+  const rows = invoices.map(sbInvoiceRow);
   let {error} = await supa.from('invoices').upsert(rows, {onConflict:'id'});
   if(error && /manual_status/i.test(error.message||'')){
     console.warn('manual_status column missing; retrying invoice save without it');
@@ -968,9 +979,29 @@ async function sbSaveInvoices(){
 
 async function sbDeleteInvoice(id){
   // Try both formats - old float-based and new inv_ prefix
-  const safeId = String(id).replace(/\./g,'_');
-  const invId = 'inv_' + id;
-  await supa.from('invoices').delete().in('id', [safeId, invId, String(id)]);
+  await supa.from('invoices').delete().in('id', sbIdVariants(id));
+}
+
+async function sbSaveRcvField(inv, field){
+  const patch = {};
+  patch[field] = inv[field]!=null && inv[field]!=='' ? parseInt(inv[field],10)||0 : 0;
+  patch[field+'ts'] = inv[field+'ts']||'';
+  patch[field+'by'] = inv[field+'by']||'';
+
+  const {data, error} = await supa.from('invoices')
+    .update(patch)
+    .in('id', sbIdVariants(inv.id))
+    .select('id');
+  if(error) throw error;
+  if(!data || !data.length){
+    let row = sbInvoiceRow(inv);
+    let {error: upsertErr} = await supa.from('invoices').upsert(row, {onConflict:'id'});
+    if(upsertErr && /manual_status/i.test(upsertErr.message||'')){
+      const {manual_status, ...fallbackRow} = row;
+      ({error: upsertErr} = await supa.from('invoices').upsert(fallbackRow, {onConflict:'id'}));
+    }
+    if(upsertErr) throw upsertErr;
+  }
 }
 
 async function sbClearAll(){
@@ -1053,7 +1084,7 @@ async function sbLoadAll(){
         const localNow = JSON.parse(localStorage.getItem('ck_inv')||'[]');
         cloudInvoices.forEach(ci => {
           const cid = String(ci.id).replace(/\./g,'_').replace(/^inv_/,'');
-          if(!_dirtyIds.has(ci.id) && !_dirtyIds.has(cid)) return;
+          if(!sbIdVariants(ci.id).some(v=>_dirtyIds.has(v)) && !_dirtyIds.has(cid)) return;
           const li = localNow.find(x => String(x.id).replace(/\./g,'_').replace(/^inv_/,'') === cid);
           if(!li) return;
           ci.rcv1=li.rcv1||ci.rcv1; ci.rcv1ts=li.rcv1ts||ci.rcv1ts; ci.rcv1by=li.rcv1by||ci.rcv1by;
@@ -1139,6 +1170,8 @@ let _lastSaveTime = 0;
 let _mergePending = false;
 let _uploadInProgress = false;
 const _dirtyIds = new Set();
+const _rcvOverrideBy = {};
+const _lastRcvSubmit = {};
 const _deletedExpIds = new Set(JSON.parse(localStorage.getItem('ck_deleted_exp')||'[]'));
 function _markExpDeleted(id){
   _deletedExpIds.add(id);
@@ -2359,6 +2392,7 @@ function _doRcvUnlock(invId, field){
 
   // Capture the existing value BEFORE anything touches the input
   const existingVal = inp.value;
+  _rcvOverrideBy[String(invId)+'|'+field] = currentUser?.name || '';
 
   // Unlock
   inp.disabled = false;
@@ -3044,8 +3078,7 @@ function handleRcv(id,field,val){
   inv[field]=val===''?'':toNum(val);
   inv[field+'ts']=val&&val!==''?fmtTs(new Date()):'';
   inv[field+'by']=val&&val!==''?(currentUser?.name||''):'';
-  _dirtyIds.add(String(id));
-  save();
+  saveRcvChange(inv, field);
   const row=document.querySelector(`tr[data-id="${safeId(id)}"]`);
   if(row){
     const rem=calcRem(inv);
@@ -3057,14 +3090,20 @@ function handleRcv(id,field,val){
 function handleRcvDash(id,field,val){
   const inv=invoices.find(x=>String(x.id)===String(id));
   if(!inv) return;
+  const submitKey = String(id)+'|'+field;
+  const normalizedVal = val===''?'':toNum(val);
+  const last = _lastRcvSubmit[submitKey];
+  if(last && last.val===String(normalizedVal) && Date.now()-last.at < 800) return;
+  _lastRcvSubmit[submitKey] = {val:String(normalizedVal), at:Date.now()};
   inv[field]=val===''?'':toNum(val);
   inv[field+'ts']=val&&val!==''?fmtTs(new Date()):'';
-  inv[field+'by']=val&&val!==''?(currentUser?.name||''):'';
+  const byName = _rcvOverrideBy[submitKey] || currentUser?.name || '';
+  inv[field+'by']=val&&val!==''?byName:'';
+  delete _rcvOverrideBy[submitKey];
   // Flag if RCV was entered on an invoice with no box count
   if(val&&val!==''&&!inv.boxes) inv.rcvOnMissing = true;
   else if(!val) inv.rcvOnMissing = false;
-  _dirtyIds.add(String(id)); // Mark as having unsaved local changes
-  save(); // saves locally + queues Supabase sync
+  saveRcvChange(inv, field);
 
   // Fast targeted DOM update — no full re-render, no scroll jump
   const st=getStatus(inv);
@@ -4348,6 +4387,25 @@ function save(){
     if(dot){ dot.style.background='#ef4444'; dot.title='Sync failed'; }
     if(txt) txt.textContent = 'Sync failed';
     toast('Cloud save failed - check Supabase connection or table permissions','err');
+  });
+}
+function saveRcvChange(inv, field){
+  _lastSaveTime = Date.now();
+  localStorage.setItem('ck_inv',JSON.stringify(invoices));
+  sbIdVariants(inv.id).forEach(v=>_dirtyIds.add(v));
+  sbSaveRcvField(inv, field).then(()=>{
+    sbIdVariants(inv.id).forEach(v=>_dirtyIds.delete(v));
+    const dot = document.getElementById('syncDot');
+    const txt = document.getElementById('syncTxt');
+    if(dot){ dot.style.background='#10b981'; dot.title='Synced'; }
+    if(txt) txt.textContent = invoices.length + ' invoices';
+  }).catch(e=>{
+    console.warn('RCV sync failed:', e.message);
+    const dot = document.getElementById('syncDot');
+    const txt = document.getElementById('syncTxt');
+    if(dot){ dot.style.background='#ef4444'; dot.title='RCV sync failed'; }
+    if(txt) txt.textContent = 'Sync failed';
+    toast('RCV cloud save failed - press Sync after checking connection','err');
   });
 }
 function toast(msg,type='ok'){const t=document.createElement('div');t.className=`toast ${type}`;t.textContent=msg;document.getElementById('toasts').appendChild(t);setTimeout(()=>t.remove(),4000);}
