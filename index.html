@@ -1,4 +1,4 @@
-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<!DOCTYPE html>
+<!DOCTYPE html>
 <html lang="en">
 <head>
 <meta charset="UTF-8">
@@ -4303,6 +4303,12 @@ function restoreSession(){
     const lastTab = sessionStorage.getItem('ck_tab') || 'invoices';
     showPage(lastTab, null);
     startAutoSync();
+    setTimeout(async ()=>{
+      await sbLoadAll();
+      await sbLoadExpected();
+      refreshActiveTab();
+      updateStats();
+    }, 500);
     setTimeout(queueUncachedInvoices, 90000); // Wait 90s after login before background parsing
     return true;
   }catch(e){ return false; }
@@ -4438,8 +4444,15 @@ function checkPin(){
     sessionStorage.setItem('ck_session', JSON.stringify({name:currentUser.name, pin:currentUser.pin}));
     toast('Welcome, ' + currentUser.name + '!', 'ok');
     pinBuffer = ''; updatePinDots();
-    renderTbl(); updateStats();
+    renderTbl(); updateStats(); renderEmployee();
     startAutoSync();
+    // Force immediate Supabase sync after login — ensures new devices get all data
+    setTimeout(async ()=>{
+      await sbLoadAll();
+      await sbLoadExpected();
+      refreshActiveTab();
+      updateStats();
+    }, 500);
     setTimeout(queueUncachedInvoices, 5000);
   } else {
     document.getElementById('pinError').textContent = 'Incorrect PIN — try again';
