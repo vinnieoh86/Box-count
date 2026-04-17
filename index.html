@@ -761,7 +761,8 @@ tbody tr:hover .delbtn,tbody tr:hover .editbtn{opacity:1;}
   <div class="modal">
     <h2>API Key Setup</h2>
     <p>Enter your Anthropic API key. Stored only in your browser — never shared externally.</p>
-    <input type="password" id="apiIn" placeholder="sk-ant-api03-…" autocomplete="off" />
+    <input type="password" id="apiIn" placeholder="sk-ant-api03-…" autocomplete="off" 
+      onkeydown="if(event.key==='Enter'){event.preventDefault();saveKey();}" />
     <div class="mnote">Get your key at <strong>console.anthropic.com</strong> → API Keys → Create Key<br>Add $10 in billing — covers months of invoice processing at your volume.</div>
     <div class="mbtns"><button class="bs" onclick="closeM('apiMod')">Cancel</button><button class="bp" onclick="saveKey()">Save &amp; Connect</button></div>
   </div>
@@ -1311,23 +1312,36 @@ function openM(id){
 function closeM(id){document.getElementById(id).classList.remove('show');}
 
 // ─── API KEY ──────────────────────────────────────────────────────────────────
-function getKey(){return localStorage.getItem('ck_key')||'';}
+function getKey(){
+  // Try localStorage first, then Supabase-synced key, then hardcoded fallback
+  return localStorage.getItem('ck_key') || 
+         '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';
+}
 function saveKey(){
-  const k=document.getElementById('apiIn').value.trim();
-  if(!k.startsWith('sk-ant-')){toast('Key should start with sk-ant-','wrn');return;}
-  localStorage.setItem('ck_key',k);
-  // Save to Supabase so all devices get the key automatically
-  supa.from('settings').upsert({key:'api_key',value:k},{onConflict:'key'}).catch(()=>{});
-  updateKeyUI();closeM('apiMod');toast('API key saved to all devices!','ok');
+  const inp = document.getElementById('apiIn');
+  const k = inp ? inp.value.trim() : '';
+  if(!k){ toast('Please enter your API key','wrn'); return; }
+  if(!k.startsWith('sk-ant-')){ toast('Key should start with sk-ant-','wrn'); return; }
+  localStorage.setItem('ck_key', k);
+  updateKeyUI();
+  // Close modal immediately — don't wait for Supabase
+  const mod = document.getElementById('apiMod');
+  if(mod) mod.classList.remove('show');
+  toast('✅ API key saved!', 'ok');
+  // Push to Supabase in background so all devices get it
+  supa.from('settings').upsert({key:'api_key', value:k},{onConflict:'key'})
+    .then(()=>toast('✅ Key synced to all devices','ok'))
+    .catch(()=>{});
 }
 async function loadKeyFromSupabase(){
   try{
     const {data} = await supa.from('settings').select('value').eq('key','api_key').maybeSingle();
-    if(data?.value && !localStorage.getItem('ck_key')){
+    if(data?.value){
+      // Always update from Supabase — ensures all devices stay in sync
       localStorage.setItem('ck_key', data.value);
       updateKeyUI();
     }
-  }catch(e){}
+  }catch(e){ console.warn('loadKeyFromSupabase:', e.message); }
 }
 function updateKeyUI(){
   const k=getKey();
