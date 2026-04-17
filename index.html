@@ -454,6 +454,75 @@ tbody tr:hover .delbtn,tbody tr:hover .editbtn{opacity:1;}
   /* Modal full width on mobile */
   .modal{width:95vw!important;max-height:90vh;overflow-y:auto;}
 }
+
+@media(max-width:700px){
+  .week-body{overflow-x:visible;}
+  .week-tbl{min-width:0;width:100%;border-collapse:separate;border-spacing:0 10px;}
+  .week-tbl thead{display:none;}
+  .week-tbl tbody,.week-tbl tr,.week-tbl td{display:block;width:100%;}
+  .week-tbl tr{
+    background:var(--surface);
+    border:1px solid var(--border);
+    border-radius:8px;
+    padding:10px 12px;
+    box-shadow:var(--shadow);
+  }
+  .week-tbl tr.exp-row{background:#fffbeb!important;border-left:4px solid #f59e0b!important;}
+  .week-tbl td{
+    border:none!important;
+    padding:7px 0!important;
+    display:flex;
+    align-items:center;
+    justify-content:space-between;
+    gap:12px;
+    text-align:right!important;
+  }
+  .week-tbl td::before{
+    color:var(--text3);
+    font-size:10px;
+    font-weight:700;
+    text-transform:uppercase;
+    letter-spacing:.04em;
+    text-align:left;
+    flex:0 0 92px;
+  }
+  .week-tbl td:nth-child(1){display:none;}
+  .week-tbl td:nth-child(2)::before{content:"Vendor";}
+  .week-tbl td:nth-child(3)::before{content:"Date";}
+  .week-tbl td:nth-child(4)::before{content:"Invoice";}
+  .week-tbl td:nth-child(5)::before{content:"Boxes";}
+  .week-tbl td:nth-child(6)::before{content:"Rcv Day 1";}
+  .week-tbl td:nth-child(7)::before{content:"Rcv Day 2";}
+  .week-tbl td:nth-child(8)::before{content:"Rcv Day 3";}
+  .week-tbl td:nth-child(9)::before{content:"Remaining";}
+  .week-tbl td:nth-child(10)::before{content:"Status";}
+  .week-tbl td:nth-child(11)::before{content:"Actions";}
+  #page-dashboard .week-tbl td:nth-child(11)::before{content:"Amount";}
+  #page-employee .week-tbl td:nth-child(11)::before{content:"Actions";}
+  .week-tbl .wv{
+    font-size:15px;
+    font-weight:800;
+    color:var(--navy);
+    text-align:right!important;
+  }
+  .week-tbl .wrec-cell{align-items:flex-end;}
+  .wrec-inp,.rec-inp{width:82px;min-height:40px;font-size:17px;}
+  .week-pills{overflow-x:auto;flex-wrap:nowrap;justify-content:flex-start;}
+  .week-hdr{align-items:flex-start;gap:8px;}
+  .mobile-next-box{
+    position:fixed;
+    right:14px;
+    bottom:14px;
+    z-index:900;
+    background:var(--blue);
+    color:#fff;
+    border:0;
+    border-radius:8px;
+    padding:12px 16px;
+    font:600 13px 'Inter',sans-serif;
+    box-shadow:var(--shadow-md);
+  }
+}
 </style>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.39.3/dist/umd/supabase.min.js" crossorigin="anonymous"></script>
 </head>
@@ -798,9 +867,9 @@ tbody tr:hover .delbtn,tbody tr:hover .editbtn{opacity:1;}
     <label class="modal-label">Invoice #</label>
     <input type="text" id="edit-invoice" placeholder="Invoice number" onkeydown="editFieldEnter(event,'edit-boxes')" />
     <label class="modal-label">Boxes</label>
-    <input type="number" id="edit-boxes" placeholder="Number of boxes" min="0" onkeydown="editFieldEnter(event,'edit-qty')" />
+    <input type="number" id="edit-boxes" placeholder="Number of boxes" min="0" inputmode="numeric" pattern="[0-9]*" enterkeyhint="next" onkeydown="editFieldEnter(event,'edit-qty')" />
     <label class="modal-label">Items Shipped <span style="font-size:10px;color:var(--text3)">(approx qty)</span></label>
-    <input type="number" id="edit-qty" placeholder="Total items/pieces shipped" min="0" onkeydown="editFieldEnter(event,'edit-total')" />
+    <input type="number" id="edit-qty" placeholder="Total items/pieces shipped" min="0" inputmode="numeric" pattern="[0-9]*" enterkeyhint="next" onkeydown="editFieldEnter(event,'edit-total')" />
     <label class="modal-label">Total Amount</label>
     <input type="text" id="edit-total" placeholder="e.g. $1,234.56" onkeydown="if(event.key==='Enter'){event.preventDefault();saveEdit();}" />
     <div class="mbtns"><button class="bs" onclick="closeM('editMod')">Cancel</button><button class="bp" onclick="saveEdit()">Save Changes</button></div>
@@ -848,6 +917,8 @@ tbody tr:hover .delbtn,tbody tr:hover .editbtn{opacity:1;}
   <div class="pt"><div class="pb" id="pb"></div></div>
   <div class="pl" id="pl"></div>
 </div>
+
+<button class="mobile-next-box" style="display:none" onclick="focusNextRcvBox()">Next box</button>
 
 <script>
 // ─── SUPABASE ─────────────────────────────────────────────────────────────────
@@ -1303,6 +1374,8 @@ function showPage(n,btn){
   if(n==='employee')  renderEmployee();
   if(n==='archive')   renderArchive();
   if(n==='settings')  renderSettings();
+  const nextBoxBtn = document.querySelector('.mobile-next-box');
+  if(nextBoxBtn) nextBoxBtn.style.display = (n==='employee' && window.matchMedia('(max-width:700px)').matches) ? 'block' : 'none';
   // Remember which tab we're on so refresh restores it
   try{ sessionStorage.setItem('ck_tab', n); }catch(e){}
   resetIdleTimer();
@@ -3322,7 +3395,7 @@ function boxInputHtml(invId, boxes, tab){
   if(tab==='invoice' && currentUser && currentUser.role!=='stock'){
     // Admin/secondary on invoice tab — can enter missing box count
     return `<span style="display:inline-flex;align-items:center;gap:4px" title="Not on invoice — enter box count">
-      <input type="number" min="0" placeholder="?"
+      <input type="number" min="0" placeholder="?" inputmode="numeric" pattern="[0-9]*" enterkeyhint="done"
         style="width:46px;text-align:center;border:1.5px solid #f59e0b;border-radius:4px;padding:2px 4px;font-size:12px;background:var(--surface2);color:var(--text)"
         onchange="quickSetBoxes('${invId}',this.value)"
         onkeydown="if(event.key==='Enter'){event.preventDefault();quickSetBoxes('${invId}',this.value);this.blur();}"
@@ -3423,6 +3496,16 @@ function rcvKeyDown(event, input){
 }
 
 // ─── EDIT ─────────────────────────────────────────────────────────────────────
+function focusNextRcvBox(){
+  const active = document.activeElement;
+  if(active && active.classList && active.classList.contains('wrec-inp')){
+    rcvKeyDown({key:'Enter', preventDefault:()=>{}}, active);
+    return;
+  }
+  const first = document.querySelector('.rcv-first:not([disabled])');
+  if(first){ first.focus(); first.select(); }
+}
+
 function openEdit(id){
   const inv=invoices.find(x=>String(x.id)===String(id));if(!inv) return;
   pendingEdit=id;
@@ -3634,7 +3717,7 @@ function renderWeekly(){
   data.forEach(x=>{const k=getWkKey(x.date);if(!wks[k]){const{start,end}=getWkRange(x.date);wks[k]={invs:[],start,end};}wks[k].invs.push(x);});
   const sorted=Object.entries(wks).sort((a,b)=>new Date(b[0])-new Date(a[0]));
   wrap.innerHTML=sorted.map(([key,wk])=>{
-    const wInvs=wk.invs.sort((a,b)=>ms(b.date)-ms(a.date));
+    const wInvs=wk.invs.sort((a,b)=>ms(b.date)-ms(a.date)||ms(b.addedAt)-ms(a.addedAt));
     const wExps=(wk.exps||[]).sort((a,b)=>ms(b.date)-ms(a.date));
     const wTotal=wInvs.reduce((s,x)=>s+amt(x.total),0);
     const wBoxes=wInvs.reduce((s,x)=>s+(parseFloat(x.boxes)||0),0);
@@ -3645,7 +3728,7 @@ function renderWeekly(){
       const rem=calcRem(x);const isComp=rem===0&&(parseFloat(x.boxes)||0)>0;
       const b=parseFloat(x.boxes)||0;
       const rcvInp=(f)=>`<div class="wrec-cell">
-        <input class="wrec-inp rcv-inp ${f==='rcv1'?'rcv-first':''}" type="number" min="0"
+        <input class="wrec-inp rcv-inp ${f==='rcv1'?'rcv-first':''}" type="number" min="0" inputmode="numeric" pattern="[0-9]*" enterkeyhint="next"
           value="${esc(String(x[f]||''))}"
           data-field="${f}" data-id="${x.id}"
           oninput="handleRcvLive('${x.id}','${f}',this.value)"
@@ -3874,10 +3957,10 @@ function renderEmpWeekly(){
     const wPending=wInvs.filter(x=>getStatus(x)==='pending').length;
     const wPartial=wInvs.filter(x=>getStatus(x)==='partial').length;
     const filteredWInvs = empStatusFilter==='all' ? wInvs : wInvs.filter(x=>getStatus(x)===empStatusFilter);
-    const wExps = wk.exps || [];
+    const wExps = (wk.exps || []).sort((a,b)=>ms(b.date)-ms(a.date)||ms(b.createdAt)-ms(a.createdAt));
     // Only skip if nothing to show at all (no invoices AND no expected orders)
     if(!filteredWInvs.length && !wExps.length) return '';
-    // Build Expected Order rows (amber, shown before real invoices)
+    // Build Expected Order rows (amber, shown after real invoices)
     const expRows = wExps.map(exp=>`
       <tr class="exp-row">
         <td style="width:28px;text-align:center;padding:4px"></td>
@@ -3909,7 +3992,7 @@ function renderEmpWeekly(){
         if(isLocked){
           return `<div class="wrec-cell">
             <div class="wrec-inp-row">
-              <input class="wrec-inp" type="number" min="0"
+              <input class="wrec-inp" type="number" min="0" inputmode="numeric" pattern="[0-9]*" enterkeyhint="next"
                 value="${esc(String(val))}"
                 data-field="${f}" data-id="${x.id}"
                 disabled
@@ -3921,7 +4004,7 @@ function renderEmpWeekly(){
         }
         return `<div class="wrec-cell">
           <div class="wrec-inp-row">
-            <input class="wrec-inp rcv-inp ${f==='rcv1'?'rcv-first':''}" type="number" min="0"
+            <input class="wrec-inp rcv-inp ${f==='rcv1'?'rcv-first':''}" type="number" min="0" inputmode="numeric" pattern="[0-9]*" enterkeyhint="next"
               value="${esc(String(val))}"
               data-field="${f}" data-id="${x.id}"
               oninput="handleRcvLive('${x.id}','${f}',this.value)"
@@ -3985,7 +4068,7 @@ function renderEmpWeekly(){
             <th style="text-align:center">Status</th>
             <th style="width:110px"></th>
           </tr></thead>
-          <tbody>${expRows}${rows}</tbody>
+          <tbody>${rows}${expRows}</tbody>
         </table>
       </div>
     </div>`;
