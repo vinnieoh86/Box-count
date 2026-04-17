@@ -1030,17 +1030,13 @@ async function sbLoadAll(){
       const {data:expSync} = await supa.from('settings').select('value').eq('key','expected_orders').maybeSingle();
       if(expSync?.value){
         const cloudExp = JSON.parse(expSync.value);
-        // Only add cloud orders not already in local AND not deleted
-        const localIds2 = new Set(expectedOrders.map(e=>e.id));
-        const newFromCloud = cloudExp.filter(e=>!localIds2.has(e.id) && !_deletedExpIds.has(e.id));
-        if(newFromCloud.length){
-          expectedOrders = [...expectedOrders, ...newFromCloud];
-          localStorage.setItem('ck_expected', JSON.stringify(expectedOrders));
-        }
-        // If local has MORE than cloud (e.g. deletions on this device), save back
-        if(expectedOrders.length < cloudExp.filter(e=>!_deletedExpIds.has(e.id)).length === false){
-          // local is already merged
-        }
+        const beforeExp = JSON.stringify(cloudExp);
+        expectedOrders = dedupeExpectedOrders(cloudExp);
+        localStorage.setItem('ck_expected', JSON.stringify(expectedOrders));
+        if(JSON.stringify(expectedOrders) !== beforeExp) sbSaveExpected().catch(e=>console.warn('expected cleanup:', e.message));
+      } else {
+        expectedOrders = [];
+        localStorage.setItem('ck_expected', '[]');
       }
     }catch(e){ console.warn('expected sync:', e.message); }
 
@@ -2474,18 +2470,11 @@ async function gmailImportOrders(forceRefresh=false){
     if(forceRefresh){
       // Force refresh — combine cloud + local, dedup, save back to Supabase
       // This ensures nothing is lost from either source
-      localStorage.removeItem('ck_deleted_exp');
-      _deletedExpIds.clear();
       // Union of cloud + local
       const cloudIds = new Set(cloudExp.map(e=>e.id));
-      const localOnly = expectedOrders.filter(e=>!cloudIds.has(e.id));
+      const localOnly = expectedOrders.filter(e=>!cloudIds.has(e.id) && !_deletedExpIds.has(e.id));
       const combined = [...cloudExp, ...localOnly];
-      // Deduplicate by PO# then vendor+date
-      const seenPO2=new Set(); const seenVD2=new Set();
-      expectedOrders = combined.filter(e=>{
-        if(e.poNumber){ if(seenPO2.has(e.poNumber)) return false; seenPO2.add(e.poNumber); return true; }
-        const k=(e.vendor||'').toLowerCase()+'|'+(e.date||''); if(seenVD2.has(k)) return false; seenVD2.add(k); return true;
-      });
+      expectedOrders = dedupeExpectedOrders(combined);
       localStorage.setItem('ck_expected', JSON.stringify(expectedOrders));
       // Save merged result back to Supabase (fire and forget — don't block UI)
       sbSaveExpected().catch(e=>console.warn('save error:', e.message));
@@ -2499,12 +2488,7 @@ async function gmailImportOrders(forceRefresh=false){
     const toMerge = cloudExp.filter(e => !localIds.has(e.id) && !_deletedExpIds.has(e.id));
     const before = expectedOrders.length;
     expectedOrders = [...expectedOrders, ...toMerge];
-    // Deduplicate by PO# then vendor+date
-    const seenPO=new Set(); const seenVD=new Set();
-    expectedOrders = expectedOrders.filter(e=>{
-      if(e.poNumber){ if(seenPO.has(e.poNumber)) return false; seenPO.add(e.poNumber); return true; }
-      const k=(e.vendor||'').toLowerCase()+'|'+(e.date||''); if(seenVD.has(k)) return false; seenVD.add(k); return true;
-    });
+    expectedOrders = dedupeExpectedOrders(expectedOrders);
     localStorage.setItem('ck_expected', JSON.stringify(expectedOrders));
     sbSaveExpected().catch(e=>console.warn('save error:',e.message));
     renderEmployee();
@@ -2523,26 +2507,31 @@ async function gmailImportOrders(forceRefresh=false){
 // ─── EXPECTED ORDERS ──────────────────────────────────────────────────────────
 let expectedOrders = JSON.parse(localStorage.getItem('ck_expected')||'[]');
 
+function dedupeExpectedOrders(list){
+  const seenPO = new Set();
+  const seenVD = new Set();
+  return (list||[]).filter(e=>{
+    if(!e || _deletedExpIds.has(e.id)) return false;
+    if(e.poNumber){
+      const po = String(e.poNumber).trim();
+      if(seenPO.has(po)) return false;
+      seenPO.add(po);
+      return true;
+    }
+    const k = (e.vendor||'').toLowerCase().trim()+'|'+(e.date||'');
+    if(seenVD.has(k)) return false;
+    seenVD.add(k);
+    return true;
+  });
+}
+
 
 
 // Master vendor list — pre-loaded + user additions stored in Supabase
 let vendorMaster = ["7UP","ABSOLUTE","ADVANCE DISTRIBUTORS","AFAM","ALICIA - KJ WHOLESALE","ANNIE","ASAD","AVIANCE","BBIM","BEAUTIFUL DAY TRADING","BEAUTY HAIR WHOLESALE","BEAUTY PLUS","BEBE GROUP","BEE SALES","BESHE","BIG MAMA","BKT TRADING","BLACK CALA","BLACK&BOSSIE","BLUE OCEAN","BOHYME","C&CC","C&L","CHADE","CLEARANCE","COSMO BEAUTY SUPPLY","DAMOA","DASO TRADING","DO NOT USE","DODO FASHION","DOLLAR","EBIN","ELTON","FASHION WORLD","FATHER AND DAUGHTER","FOXY SILVER","FRIES BRO","FRITOS","GABRIELLA","GALERIE","GNS TRADING","GOLDSTAR","GRACE IMPORT","GREIS","GRIP TIGHT","GRIPPO","H MART","H2PRO","HAIR HA","HAIR PLUS","HAIR SOUTH INC","HAIR TREND","HAIRLAND","HALF BUNDLE","HALO","HARLEM125","HEAVENLY SCENTS","HINES  & CLEAR","HUSMAN","HW BEAUTY PRO","ICE","ITS A WIG","J & A IMPORT","J CLASS","JC BEAUTY","JINNY BEAUTY","JK TRADING","JOBNOM","JOON TRADING DIETER TEA","JS BEAUTY EXPERT INC","JUJU COLLECTION","KARA HAIR FASHION","KIRGIN CORP","KISS","KLOSTERMAN","KN WHOLESALE","KOEM ENTERPRISES INC","KONEX","KROGER","LA GIRL","LAFLARE","LAUDIC","LEE JEWELRY","LENZ OUTLET","LITTLE DEBBIE","LOG IN APPAREL INC","LUV SPORTS","MANE CONCEPT","MASTERPIECE","MAYDE","MIAMI HAIR","MIDWAY","MINAM TRADING","MISA TRADING","MISS BOND","MISS LASHES","MISUNG","MONEY 4 U","MOTOWN ORADELL","NACKTAS LLC","NATIONAL TOBACCO COMPANY","NEWYORK SUNGLASSES","NICKA K","NOBLESSE","NOVA","NOVA COLLECTION","NUUNCHI INC","OTHER","OUR HEAVENLY SCENTS","OUTRE","PANA LINE","PEACH TOWN","PEPSI","PETRA","PK BEAUTY","PNM TRADING","PNW GLOBAL","POS VENDOR","PRECISION OPTICAL","PRIMA COLLECTION","R&B COLLECTION","R&R CORP","REAL BEAUTY","RED","RED CARPET","RED OWL","RIAH HAIR","RICKING PAPER - JOSHEN","ROYAL BEAUTY","SALE","SAMS","SATYA WHOLESALE","SAVE ME","SENSATIONNEL","SENSUAL COLLECTION","SHA","SHAKE-N-GO","SHK TRADING","SIGNATURE LOOKS INC","SILKY HAIR","SK WIRELESS","SKY TRADING","SM BEAUTY","SO PRETTY","SP IMPORT","SPICE SUPREME","STAGNARO","SUNFLOWER","SUNFLOWER - HOLLYWOOD CONTACT","T&J MAX","TEAM MODERN","TEST","THE WIG","TOPS","TRANSFER","TRI STATE","TRUE COLOR","UNIVERSAL BEAUTY","US HAIR","US MERCHANDISE","VALUE SPOT","VANESSA","VIVACE","VIVICA FOX","VOG NEW YORK","WINK O LASH","YJ WHOLESALE","YOUNGS FASHION","YSU"];
 
 function saveExpected(){
-  // Deduplicate before saving
-  const seenPO2 = new Set();
-  const seenVD2 = new Set();
-  expectedOrders = expectedOrders.filter(e=>{
-    if(e.poNumber){
-      if(seenPO2.has(e.poNumber)) return false;
-      seenPO2.add(e.poNumber);
-      return true;
-    }
-    const vdKey = (e.vendor||'').toLowerCase()+'|'+(e.date||'');
-    if(seenVD2.has(vdKey)) return false;
-    seenVD2.add(vdKey);
-    return true;
-  });
+  expectedOrders = dedupeExpectedOrders(expectedOrders);
   localStorage.setItem('ck_expected', JSON.stringify(expectedOrders));
   sbSaveExpected();
 }
@@ -2565,21 +2554,13 @@ async function sbLoadExpected(){
     const {data} = await supa.from('settings').select('value').eq('key','expected_orders').maybeSingle();
     if(data?.value){
       const cloudExp = JSON.parse(data.value);
-      // Merge cloud + local, dedup by PO# then vendor+date
-      const localIds = new Set(expectedOrders.map(e=>e.id));
-      const toAdd = cloudExp.filter(e => !localIds.has(e.id) && !_deletedExpIds.has(e.id));
-      if(toAdd.length){
-        expectedOrders = [...expectedOrders, ...toAdd];
-        // Dedup by PO#
-        const seen = new Set();
-        expectedOrders = expectedOrders.filter(e=>{
-          const k = e.poNumber || ((e.vendor||'').toLowerCase()+'|'+(e.date||''));
-          if(seen.has(k)) return false;
-          seen.add(k);
-          return true;
-        });
-        localStorage.setItem('ck_expected', JSON.stringify(expectedOrders));
-      }
+      const before = JSON.stringify(cloudExp);
+      expectedOrders = dedupeExpectedOrders(cloudExp);
+      localStorage.setItem('ck_expected', JSON.stringify(expectedOrders));
+      if(JSON.stringify(expectedOrders) !== before) sbSaveExpected();
+    } else {
+      expectedOrders = [];
+      localStorage.setItem('ck_expected', '[]');
     }
     // Also load vendor master additions
     const {data:vd} = await supa.from('settings').select('value').eq('key','vendor_master').maybeSingle();
