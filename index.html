@@ -623,28 +623,8 @@ tbody tr:hover .delbtn,tbody tr:hover .editbtn{opacity:1;}
 <!-- ═══ EMPLOYEE RECEIVING PAGE ═══ -->
 <div class="page" id="page-employee">
 
-  <!-- Alert + Upload top row (alerts LEFT, upload RIGHT) -->
-  <div style="display:flex;gap:16px;margin-bottom:16px;flex-wrap:wrap;align-items:stretch">
-    <!-- Alerts left -->
-    <div style="flex:2;min-width:260px" id="empAlertWrap"></div>
-    <!-- Drop zone right -->
-    <div style="flex:1;min-width:220px">
-      <div class="dz" id="dz-emp" onclick="document.getElementById('fi-emp').click()" style="padding:18px;min-height:100px"
-           ondragenter="event.preventDefault();this.classList.add('over')"
-           ondragover="event.preventDefault();event.stopPropagation();this.classList.add('over')"
-           ondragleave="if(!this.contains(event.relatedTarget))this.classList.remove('over')"
-           ondrop="event.preventDefault();event.stopPropagation();this.classList.remove('over');const f=Array.from(event.dataTransfer.files).filter(f=>f.type==='application/pdf'||f.type.startsWith('image/')||f.name.match(/\.pdf$/i));if(f.length)processFiles(f.map(renameWithTimestamp))">
-        <span class="dz-icon" style="font-size:24px">📂</span>
-        <div class="dz-title" style="font-size:14px">Drop invoices here</div>
-        <div class="dz-sub" style="font-size:11px">PDF or photo</div>
-        <div style="display:flex;gap:8px;justify-content:center;margin-top:10px">
-          <button onclick="event.stopPropagation();document.getElementById('fi-emp').click()" style="background:var(--blue);color:#fff;border:none;padding:7px 16px;border-radius:7px;font-size:12px;font-weight:600;cursor:pointer">📁 Files</button>
-          <button onclick="event.stopPropagation();openCameraMode()" style="background:var(--surface2);color:var(--text);border:1px solid var(--border2);padding:7px 16px;border-radius:7px;font-size:12px;font-weight:600;cursor:pointer">📷 Camera</button>
-        </div>
-        <input type="file" id="fi-emp" multiple accept=".pdf,image/*" style="display:none"/>
-      </div>
-    </div>
-  </div>
+  <!-- Alert wrap -->
+  <div id="empAlertWrap" style="margin-bottom:16px"></div>
 
   <!-- KPI row — no dollar amounts -->
   <div class="emp-kpi">
@@ -1393,11 +1373,6 @@ dzEl.addEventListener('drop', e=>{
 });
 document.getElementById('fi').addEventListener('change',e=>{
   const f=Array.from(e.target.files);if(f.length) processFiles(f);e.target.value='';});
-document.getElementById('fi-emp').addEventListener('change',e=>{
-  const f=Array.from(e.target.files);
-  if(f.length) processFiles(f.map(renameWithTimestamp));
-  e.target.value='';
-});
 document.getElementById('fi-camera').addEventListener('change',e=>{
   const f=Array.from(e.target.files);
   if(f.length) processFiles(f.map(renameWithTimestamp));
@@ -2600,6 +2575,15 @@ async function saveVendorMaster(){
 let _expEditId = null;
 let _matchExpId = null;
 let _autoMatchPending = null; // {expId, invoiceIdx}
+const _autoMatchQueue = []; // queue for multiple simultaneous matches
+
+function _showNextAutoMatch(){
+  if(_autoMatchQueue.length === 0) return;
+  const next = _autoMatchQueue.shift();
+  _autoMatchPending = next;
+  document.getElementById('autoMatchText').innerHTML = next.html;
+  document.getElementById('autoMatchModal').style.display = 'flex';
+}
 
 function canManageExpected(){
   if(!currentUser) return false;
@@ -2775,19 +2759,23 @@ function confirmMatch(expId, invoiceId){
 
 // Auto-match: called after each invoice upload
 function checkAutoMatch(newInv){
-  const invVendor = (newInv.vendor||'').toUpperCase().trim();
+  // Strip common business suffixes for better matching
+  function _normalize(name){
+    return (name||'').toUpperCase().trim()
+      .replace(/,?\s*(INC\.?|LLC\.?|CORP\.?|CO\.?|LTD\.?|L\.L\.C\.?)$/i,'').trim();
+  }
+  const invVendor = _normalize(newInv.vendor);
   const invDate = parseDate(newInv.date||newInv.addedAt);
   if(isNaN(invDate)) return;
 
-  // Find expected orders with same/similar vendor within ±4 days
-  // Uses fuzzy match: either name contains the other, or they share 4+ consecutive chars
   function _vendorMatch(a, b){
     if(!a||!b) return false;
-    if(a===b) return true;
-    if(a.includes(b) || b.includes(a)) return true;
+    const na = _normalize(a), nb = _normalize(b);
+    if(na===nb) return true;
+    if(na.includes(nb) || nb.includes(na)) return true;
     // Check if they share significant word overlap
-    const aWords = a.split(/\s+/).filter(w=>w.length>2);
-    const bWords = b.split(/\s+/).filter(w=>w.length>2);
+    const aWords = na.split(/\s+/).filter(w=>w.length>2);
+    const bWords = nb.split(/\s+/).filter(w=>w.length>2);
     return aWords.some(w=>bWords.includes(w));
   }
   const candidates = expectedOrders.filter(exp=>{
@@ -2805,12 +2793,21 @@ function checkAutoMatch(newInv){
   candidates.sort((a,b)=> Math.abs(parseDate(a.date)-invDate) - Math.abs(parseDate(b.date)-invDate));
   const best = candidates[0];
 
-  _autoMatchPending = {expId: best.id, inv: newInv};
-  document.getElementById('autoMatchText').innerHTML =
+  const html =
     `Uploaded invoice: <strong>${esc(newInv.vendor)}</strong> · ${esc(newInv.date||'')} · #${esc(newInv.invoice_number||'—')}<br><br>` +
     `Matches expected order: <strong>${esc(best.vendor)}</strong> logged for <strong>${esc(best.date)}</strong>${best.notes?` <em>(${esc(best.notes)})</em>`:''}<br><br>` +
     `Merge and remove the expected entry?`;
-  document.getElementById('autoMatchModal').style.display = 'flex';
+
+  const matchObj = {expId: best.id, inv: newInv, html};
+
+  // If modal already showing, queue it — otherwise show immediately
+  if(document.getElementById('autoMatchModal').style.display === 'flex'){
+    _autoMatchQueue.push(matchObj);
+  } else {
+    _autoMatchPending = matchObj;
+    document.getElementById('autoMatchText').innerHTML = html;
+    document.getElementById('autoMatchModal').style.display = 'flex';
+  }
 }
 
 function closeAutoMatch(doMerge){
@@ -2819,14 +2816,18 @@ function closeAutoMatch(doMerge){
     const expId = _autoMatchPending.expId;
     const invId = _autoMatchPending.inv.id;
     _autoMatchPending = null;
-    _mergePending = true; // Block ALL syncs immediately before anything else
-    _lastSaveTime = Date.now(); // Also reset the 15s cooldown
+    _mergePending = true;
+    _lastSaveTime = Date.now();
     save();
     toast('⏳ Saving invoice — confirming before merge…','ok');
     _waitForInvoiceInSupabase(invId, expId, 0);
+    // Show next queued match after a short delay
+    setTimeout(_showNextAutoMatch, 2000);
     return;
   }
   _autoMatchPending = null;
+  // Show next queued match if any
+  setTimeout(_showNextAutoMatch, 500);
 }
 
 async function _waitForInvoiceInSupabase(invId, expId, attempts){
