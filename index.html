@@ -1315,7 +1315,19 @@ function getKey(){return localStorage.getItem('ck_key')||'';}
 function saveKey(){
   const k=document.getElementById('apiIn').value.trim();
   if(!k.startsWith('sk-ant-')){toast('Key should start with sk-ant-','wrn');return;}
-  localStorage.setItem('ck_key',k);updateKeyUI();closeM('apiMod');toast('API key saved!','ok');
+  localStorage.setItem('ck_key',k);
+  // Save to Supabase so all devices get the key automatically
+  supa.from('settings').upsert({key:'api_key',value:k},{onConflict:'key'}).catch(()=>{});
+  updateKeyUI();closeM('apiMod');toast('API key saved to all devices!','ok');
+}
+async function loadKeyFromSupabase(){
+  try{
+    const {data} = await supa.from('settings').select('value').eq('key','api_key').maybeSingle();
+    if(data?.value && !localStorage.getItem('ck_key')){
+      localStorage.setItem('ck_key', data.value);
+      updateKeyUI();
+    }
+  }catch(e){}
 }
 function updateKeyUI(){
   const k=getKey();
@@ -4809,6 +4821,7 @@ async function queueUncachedInvoices(){
 updateKeyUI();
 (async()=>{
   await loadPinUsersFromSupabase();
+  await loadKeyFromSupabase(); // Load shared API key so all devices can parse PDFs
   try{ if(typeof buildUserSelect === 'function') buildUserSelect(); }catch(e){ console.warn('buildUserSelect error (non-fatal):', e.message); }
 
   // Load from Supabase first — it's the single source of truth
