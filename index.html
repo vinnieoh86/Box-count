@@ -3871,10 +3871,16 @@ function renderEmpWeekly(){
     // Only skip if nothing to show at all (no invoices AND no expected orders)
     if(!filteredWInvs.length && !wExps.length) return '';
     // Build Expected Order rows (amber, shown before real invoices)
-    const expRows = wExps.map(exp=>`
+    const expRows = wExps.map(exp=>{
+      const expBy = exp.createdBy || '';
+      const expAt = exp.createdAt ? new Date(exp.createdAt).toLocaleDateString('en-US',{month:'numeric',day:'numeric',year:'2-digit'}) : '';
+      const expSource = exp.fromGmail ? '📧 Gmail' : expBy ? `👤 ${expBy}` : '';
+      return `
       <tr class="exp-row">
         <td style="width:28px;text-align:center;padding:4px"></td>
-        <td class="wv" style="color:#92400e;font-weight:700">${vcaps(exp.vendor||'—')}</td>
+        <td class="wv" style="color:#92400e;font-weight:700">${vcaps(exp.vendor||'—')}
+          ${expSource?`<br><span style="font-size:9px;font-weight:400;color:#b45309">${expSource}${expAt?' · '+expAt:''}</span>`:''}
+        </td>
         <td class="wd" style="color:#92400e">${esc(exp.date||'—')}</td>
         <td class="wi"><span style="font-size:11px;color:#92400e;font-style:italic">${esc(exp.notes||'Awaiting invoice')}</span></td>
         <td style="text-align:center;color:var(--text3)">—</td>
@@ -3887,7 +3893,7 @@ function renderEmpWeekly(){
           <button onclick="openMatchModal('${exp.id}')" title="Match to invoice" style="background:var(--blue-dim);color:var(--navy2);border:1px solid #93c5fd;padding:3px 8px;border-radius:4px;font-size:11px;cursor:pointer;margin-right:3px">↔ Match</button>
           <button onclick="deleteExpected('${exp.id}')" title="Remove" style="background:#fee2e2;color:#dc2626;border:none;padding:3px 8px;border-radius:4px;font-size:11px;cursor:pointer">✕</button>
         </td>`:'<td></td>'}
-      </tr>`).join('');
+      </tr>`;}).join('');
 
     const rows=filteredWInvs.map(x=>{
       const st=getStatus(x);
@@ -3936,7 +3942,7 @@ function renderEmpWeekly(){
       const empWkKey = key.replace(/[^a-zA-Z0-9]/g,'_');
       return `<tr class="${st==='complete'?'wcomp':st==='overage'?'wover':''}">
         <td style="width:28px;text-align:center;padding:4px"><input type="checkbox" class="wpdf-chk" data-wk="emp_${empWkKey}" data-url="${x.fileUrl||''}" data-name="${(x.filename||x.invoice_number||String(x.id)).replace(/"/g,'')}" style="width:15px;height:15px;cursor:pointer" ${!x.fileUrl?'title="No PDF on this device"':''}></td>
-        <td class="wv">${vcaps(x.vendor||'—')}</td>
+        <td class="wv">${vcaps(x.vendor||'—')}${x.uploadedBy?`<br><span style="font-size:9px;font-weight:400;color:var(--text3)">↑ ${esc(x.uploadedBy)}${x.addedAt?' · '+new Date(x.addedAt).toLocaleDateString('en-US',{month:'numeric',day:'numeric',year:'2-digit'}):''}</span>`:''}</td>
         <td class="wd">${esc(x.date||'—')}</td>
         <td class="wi">${x.fileUrl?`<span style="color:var(--blue);font-weight:500;text-decoration:underline;cursor:pointer" onclick="openLocalFile('${x.fileUrl}','${(x.filename||x.invoice_number||'invoice').replace(/'/g,'')}')" title="Click to download PDF">${esc(x.invoice_number||'—')} 📎</span>`:esc(x.invoice_number||'—')}</td>
         <td style="text-align:center">${boxInputHtml(x.id, boxes,'receiving')}</td>
