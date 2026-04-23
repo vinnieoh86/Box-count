@@ -454,75 +454,6 @@ tbody tr:hover .delbtn,tbody tr:hover .editbtn{opacity:1;}
   /* Modal full width on mobile */
   .modal{width:95vw!important;max-height:90vh;overflow-y:auto;}
 }
-
-@media(max-width:700px){
-  .week-body{overflow-x:visible;}
-  .week-tbl{min-width:0;width:100%;border-collapse:separate;border-spacing:0 10px;}
-  .week-tbl thead{display:none;}
-  .week-tbl tbody,.week-tbl tr,.week-tbl td{display:block;width:100%;}
-  .week-tbl tr{
-    background:var(--surface);
-    border:1px solid var(--border);
-    border-radius:8px;
-    padding:10px 12px;
-    box-shadow:var(--shadow);
-  }
-  .week-tbl tr.exp-row{background:#fffbeb!important;border-left:4px solid #f59e0b!important;}
-  .week-tbl td{
-    border:none!important;
-    padding:7px 0!important;
-    display:flex;
-    align-items:center;
-    justify-content:space-between;
-    gap:12px;
-    text-align:right!important;
-  }
-  .week-tbl td::before{
-    color:var(--text3);
-    font-size:10px;
-    font-weight:700;
-    text-transform:uppercase;
-    letter-spacing:.04em;
-    text-align:left;
-    flex:0 0 92px;
-  }
-  .week-tbl td:nth-child(1){display:none;}
-  .week-tbl td:nth-child(2)::before{content:"Vendor";}
-  .week-tbl td:nth-child(3)::before{content:"Date";}
-  .week-tbl td:nth-child(4)::before{content:"Invoice";}
-  .week-tbl td:nth-child(5)::before{content:"Boxes";}
-  .week-tbl td:nth-child(6)::before{content:"Rcv Day 1";}
-  .week-tbl td:nth-child(7)::before{content:"Rcv Day 2";}
-  .week-tbl td:nth-child(8)::before{content:"Rcv Day 3";}
-  .week-tbl td:nth-child(9)::before{content:"Remaining";}
-  .week-tbl td:nth-child(10)::before{content:"Status";}
-  .week-tbl td:nth-child(11)::before{content:"Actions";}
-  #page-dashboard .week-tbl td:nth-child(11)::before{content:"Amount";}
-  #page-employee .week-tbl td:nth-child(11)::before{content:"Actions";}
-  .week-tbl .wv{
-    font-size:15px;
-    font-weight:800;
-    color:var(--navy);
-    text-align:right!important;
-  }
-  .week-tbl .wrec-cell{align-items:flex-end;}
-  .wrec-inp,.rec-inp{width:82px;min-height:40px;font-size:17px;}
-  .week-pills{overflow-x:auto;flex-wrap:nowrap;justify-content:flex-start;}
-  .week-hdr{align-items:flex-start;gap:8px;}
-  .mobile-next-box{
-    position:fixed;
-    right:14px;
-    bottom:14px;
-    z-index:900;
-    background:var(--blue);
-    color:#fff;
-    border:0;
-    border-radius:8px;
-    padding:12px 16px;
-    font:600 13px 'Inter',sans-serif;
-    box-shadow:var(--shadow-md);
-  }
-}
 </style>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.39.3/dist/umd/supabase.min.js" crossorigin="anonymous"></script>
 </head>
@@ -802,12 +733,10 @@ tbody tr:hover .delbtn,tbody tr:hover .editbtn{opacity:1;}
 
     <!-- Cloud sync -->
     <div style="background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:20px">
-    <div style="font-size:14px;font-weight:700;color:var(--navy);margin-bottom:4px">☁ Cloud Sync</div>
-    <div style="font-size:12px;color:var(--text3);margin-bottom:14px">Users are saved to cloud automatically. If another device shows wrong users, force a sync here.</div>
-    <button onclick="forceSyncUsersToCloud()" style="background:var(--blue);color:#fff;border:none;padding:9px 20px;border-radius:7px;font-size:13px;font-weight:600;cursor:pointer">↑ Push Users to Cloud</button>
-    <button onclick="forceSyncInvoicesToCloud()" style="background:var(--green);color:#fff;border:none;padding:9px 20px;border-radius:7px;font-size:13px;font-weight:600;cursor:pointer;margin-left:8px">↑ Push Invoices to Cloud</button>
-    <div style="font-size:11px;color:var(--text3);margin-top:10px;line-height:1.6">Use invoice push on the device that already shows the missing invoices. Other devices can then press Sync or wait for auto-sync.</div>
-  </div>
+      <div style="font-size:14px;font-weight:700;color:var(--navy);margin-bottom:4px">☁ Cloud Sync</div>
+      <div style="font-size:12px;color:var(--text3);margin-bottom:14px">Users are saved to cloud automatically. If another device shows wrong users, force a sync here.</div>
+      <button onclick="forceSyncUsersToCloud()" style="background:var(--blue);color:#fff;border:none;padding:9px 20px;border-radius:7px;font-size:13px;font-weight:600;cursor:pointer">↑ Push Users to Cloud</button>
+    </div>
 
   </div>
 </div>
@@ -867,9 +796,9 @@ tbody tr:hover .delbtn,tbody tr:hover .editbtn{opacity:1;}
     <label class="modal-label">Invoice #</label>
     <input type="text" id="edit-invoice" placeholder="Invoice number" onkeydown="editFieldEnter(event,'edit-boxes')" />
     <label class="modal-label">Boxes</label>
-    <input type="number" id="edit-boxes" placeholder="Number of boxes" min="0" inputmode="numeric" pattern="[0-9]*" enterkeyhint="next" onkeydown="editFieldEnter(event,'edit-qty')" />
+    <input type="number" id="edit-boxes" placeholder="Number of boxes" min="0" onkeydown="editFieldEnter(event,'edit-qty')" />
     <label class="modal-label">Items Shipped <span style="font-size:10px;color:var(--text3)">(approx qty)</span></label>
-    <input type="number" id="edit-qty" placeholder="Total items/pieces shipped" min="0" inputmode="numeric" pattern="[0-9]*" enterkeyhint="next" onkeydown="editFieldEnter(event,'edit-total')" />
+    <input type="number" id="edit-qty" placeholder="Total items/pieces shipped" min="0" onkeydown="editFieldEnter(event,'edit-total')" />
     <label class="modal-label">Total Amount</label>
     <input type="text" id="edit-total" placeholder="e.g. $1,234.56" onkeydown="if(event.key==='Enter'){event.preventDefault();saveEdit();}" />
     <div class="mbtns"><button class="bs" onclick="closeM('editMod')">Cancel</button><button class="bp" onclick="saveEdit()">Save Changes</button></div>
@@ -918,16 +847,16 @@ tbody tr:hover .delbtn,tbody tr:hover .editbtn{opacity:1;}
   <div class="pl" id="pl"></div>
 </div>
 
-<button class="mobile-next-box" style="display:none" onclick="focusNextRcvBox()">Next box</button>
-
 <script>
 // ─── SUPABASE ─────────────────────────────────────────────────────────────────
 const SUPA_URL = 'https://ucqathphqoijoadxqwja.supabase.co';
 const SUPA_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InVjcWF0aHBocW9pam9hZHhxd2phIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzU1OTY4NTEsImV4cCI6MjA5MTE3Mjg1MX0.Rp6eDFDrs1eVRC1w6ULrHBBqL9jBYHPoIS-xddvl9MQ';
 const supa = supabase.createClient(SUPA_URL, SUPA_KEY);
 
-function sbInvoiceRow(x){
-  return {
+async function sbSaveInvoices(){
+  if(!invoices.length) return;
+  const dirtySnapshot = new Set(_dirtyIds); // snapshot which IDs we're saving
+  const rows = invoices.map(x=>({
     id: String(x.id).replace(/\./g,'_'),
     vendor: x.vendor||'', date: x.date||'',
     invoice_number: x.invoice_number||'', filename: x.filename||'',
@@ -948,60 +877,21 @@ function sbInvoiceRow(x){
     rcv3by: x.rcv3by||'',
     uploaded_by: x.uploadedBy||'',
     manual_status: x.manualStatus||'',
-  };
-}
-
-function sbIdVariants(id){
-  const raw = String(id);
-  const safe = raw.replace(/\./g,'_');
-  const base = raw.replace(/^inv_/,'');
-  return [...new Set([raw, safe, 'inv_'+base, base.replace(/\./g,'_')])];
-}
-
-async function sbSaveInvoices(){
-  if(!invoices.length) return;
-  const dirtySnapshot = new Set(_dirtyIds); // snapshot which IDs we're saving
-  const rows = invoices.map(sbInvoiceRow);
-  let {error} = await supa.from('invoices').upsert(rows, {onConflict:'id'});
-  if(error && /manual_status/i.test(error.message||'')){
-    console.warn('manual_status column missing; retrying invoice save without it');
-    const fallbackRows = rows.map(({manual_status, ...row}) => row);
-    ({error} = await supa.from('invoices').upsert(fallbackRows, {onConflict:'id'}));
-  }
+  }));
+  const {error} = await supa.from('invoices').upsert(rows, {onConflict:'id'});
   if(error){
     console.error('Supabase save error:', error.message);
-    throw error;
+  } else {
+    // Clear dirty flags for IDs that were successfully saved
+    dirtySnapshot.forEach(id => _dirtyIds.delete(id));
   }
-  // Clear dirty flags for IDs that were successfully saved
-  dirtySnapshot.forEach(id => _dirtyIds.delete(id));
-  return rows.length;
 }
 
 async function sbDeleteInvoice(id){
   // Try both formats - old float-based and new inv_ prefix
-  await supa.from('invoices').delete().in('id', sbIdVariants(id));
-}
-
-async function sbSaveRcvField(inv, field){
-  const patch = {};
-  patch[field] = inv[field]!=null && inv[field]!=='' ? parseInt(inv[field],10)||0 : 0;
-  patch[field+'ts'] = inv[field+'ts']||'';
-  patch[field+'by'] = inv[field+'by']||'';
-
-  const {data, error} = await supa.from('invoices')
-    .update(patch)
-    .in('id', sbIdVariants(inv.id))
-    .select('id');
-  if(error) throw error;
-  if(!data || !data.length){
-    let row = sbInvoiceRow(inv);
-    let {error: upsertErr} = await supa.from('invoices').upsert(row, {onConflict:'id'});
-    if(upsertErr && /manual_status/i.test(upsertErr.message||'')){
-      const {manual_status, ...fallbackRow} = row;
-      ({error: upsertErr} = await supa.from('invoices').upsert(fallbackRow, {onConflict:'id'}));
-    }
-    if(upsertErr) throw upsertErr;
-  }
+  const safeId = String(id).replace(/\./g,'_');
+  const invId = 'inv_' + id;
+  await supa.from('invoices').delete().in('id', [safeId, invId, String(id)]);
 }
 
 async function sbClearAll(){
@@ -1084,7 +974,7 @@ async function sbLoadAll(){
         const localNow = JSON.parse(localStorage.getItem('ck_inv')||'[]');
         cloudInvoices.forEach(ci => {
           const cid = String(ci.id).replace(/\./g,'_').replace(/^inv_/,'');
-          if(!sbIdVariants(ci.id).some(v=>_dirtyIds.has(v)) && !_dirtyIds.has(cid)) return;
+          if(!_dirtyIds.has(ci.id) && !_dirtyIds.has(cid)) return;
           const li = localNow.find(x => String(x.id).replace(/\./g,'_').replace(/^inv_/,'') === cid);
           if(!li) return;
           ci.rcv1=li.rcv1||ci.rcv1; ci.rcv1ts=li.rcv1ts||ci.rcv1ts; ci.rcv1by=li.rcv1by||ci.rcv1by;
@@ -1132,13 +1022,17 @@ async function sbLoadAll(){
       const {data:expSync} = await supa.from('settings').select('value').eq('key','expected_orders').maybeSingle();
       if(expSync?.value){
         const cloudExp = JSON.parse(expSync.value);
-        const beforeExp = JSON.stringify(cloudExp);
-        expectedOrders = dedupeExpectedOrders(cloudExp);
-        localStorage.setItem('ck_expected', JSON.stringify(expectedOrders));
-        if(JSON.stringify(expectedOrders) !== beforeExp) sbSaveExpected().catch(e=>console.warn('expected cleanup:', e.message));
-      } else {
-        expectedOrders = [];
-        localStorage.setItem('ck_expected', '[]');
+        // Only add cloud orders not already in local AND not deleted
+        const localIds2 = new Set(expectedOrders.map(e=>e.id));
+        const newFromCloud = cloudExp.filter(e=>!localIds2.has(e.id) && !_deletedExpIds.has(e.id));
+        if(newFromCloud.length){
+          expectedOrders = [...expectedOrders, ...newFromCloud];
+          localStorage.setItem('ck_expected', JSON.stringify(expectedOrders));
+        }
+        // If local has MORE than cloud (e.g. deletions on this device), save back
+        if(expectedOrders.length < cloudExp.filter(e=>!_deletedExpIds.has(e.id)).length === false){
+          // local is already merged
+        }
       }
     }catch(e){ console.warn('expected sync:', e.message); }
 
@@ -1170,8 +1064,6 @@ let _lastSaveTime = 0;
 let _mergePending = false;
 let _uploadInProgress = false;
 const _dirtyIds = new Set();
-const _rcvOverrideBy = {};
-const _lastRcvSubmit = {};
 const _deletedExpIds = new Set(JSON.parse(localStorage.getItem('ck_deleted_exp')||'[]'));
 function _markExpDeleted(id){
   _deletedExpIds.add(id);
@@ -1407,8 +1299,6 @@ function showPage(n,btn){
   if(n==='employee')  renderEmployee();
   if(n==='archive')   renderArchive();
   if(n==='settings')  renderSettings();
-  const nextBoxBtn = document.querySelector('.mobile-next-box');
-  if(nextBoxBtn) nextBoxBtn.style.display = (n==='employee' && window.matchMedia('(max-width:700px)').matches) ? 'block' : 'none';
   // Remember which tab we're on so refresh restores it
   try{ sessionStorage.setItem('ck_tab', n); }catch(e){}
   resetIdleTimer();
@@ -1423,16 +1313,9 @@ function closeM(id){document.getElementById(id).classList.remove('show');}
 
 // ─── API KEY ──────────────────────────────────────────────────────────────────
 function getKey(){
-  // Shared key is loaded from Supabase into localStorage.
-  // No hardcoded fallback: stale embedded keys make parsing fail silently on every device.
-  return localStorage.getItem('ck_key') || '';
-}
-function handleInvalidApiKey(){
-  localStorage.removeItem('ck_key');
-  supa.from('settings').delete().eq('key','api_key').catch(()=>{});
-  updateKeyUI();
-  openM('apiMod');
-  toast('Anthropic API key is invalid or expired. Paste a new key to parse PDFs.','err');
+  // Try localStorage first, then Supabase-synced key, then hardcoded fallback
+  return localStorage.getItem('ck_key') || 
+         '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';
 }
 function saveKey(){
   const inp = document.getElementById('apiIn');
@@ -1642,12 +1525,7 @@ async function callClaudeMultiImage(pages){
   });
   if(!r.ok){
     const eb=await r.json().catch(()=>({error:{message:'HTTP '+r.status}}));
-    const msg = eb.error?.message||'API error '+r.status;
-    if(r.status===401 || /invalid.*x-api-key|api key/i.test(msg)){
-      handleInvalidApiKey();
-      throw new Error('Invalid Anthropic API key');
-    }
-    throw new Error(msg);
+    throw new Error(eb.error?.message||'API error '+r.status);
   }
   const d = await r.json();
   if(!d.content||!d.content.length) throw new Error('Empty API response');
@@ -1997,10 +1875,6 @@ async function callClaude(file){
         const eb=await r.json().catch(()=>({error:{message:'HTTP '+r.status}}));
         const msg=eb.error?.message||'API error '+r.status;
         // 529 = Overloaded, 429 = Rate limit — both get exponential backoff
-        if(r.status===401 || /invalid.*x-api-key|api key/i.test(msg)){
-          handleInvalidApiKey();
-          throw new Error('Invalid Anthropic API key');
-        }
         if((r.status===529||r.status===429||r.status===500||r.status===503)&&attempt<maxAttempts){
           const wait=Math.min(8000*Math.pow(2,attempt-1),60000); // 8s, 16s, 32s, 60s
           toast(`⏳ API error ${r.status} — retrying in ${Math.round(wait/1000)}s (attempt ${attempt}/${maxAttempts})…`,'wrn');
@@ -2127,23 +2001,9 @@ async function callItemizedAPI(rec, prompt){
     });
     if(r.ok) break;
     if((r.status===529||r.status===500||r.status===429)&&_att<3){ await sleep(15000*_att); continue; }
-    const eb=await r.json().catch(()=>({}));
-    const msg = eb.error?.message||'API '+r.status;
-    if(r.status===401 || /invalid.*x-api-key|api key/i.test(msg)){
-      handleInvalidApiKey();
-      throw new Error('Invalid Anthropic API key');
-    }
-    throw new Error(msg);
+    const eb=await r.json().catch(()=>({})); throw new Error(eb.error?.message||'API '+r.status);
   }
-  if(!r.ok){
-    const eb=await r.json().catch(()=>({}));
-    const msg = eb.error?.message||'API '+r.status;
-    if(r.status===401 || /invalid.*x-api-key|api key/i.test(msg)){
-      handleInvalidApiKey();
-      throw new Error('Invalid Anthropic API key');
-    }
-    throw new Error(msg);
-  }
+  if(!r.ok){ const eb=await r.json().catch(()=>({})); throw new Error(eb.error?.message||'API '+r.status); }
   const d = await r.json();
   const tb = d.content.find(b=>b.type==='text');
   if(!tb) throw new Error('No API response');
@@ -2392,7 +2252,6 @@ function _doRcvUnlock(invId, field){
 
   // Capture the existing value BEFORE anything touches the input
   const existingVal = inp.value;
-  _rcvOverrideBy[String(invId)+'|'+field] = currentUser?.name || '';
 
   // Unlock
   inp.disabled = false;
@@ -2577,11 +2436,18 @@ async function gmailImportOrders(forceRefresh=false){
     if(forceRefresh){
       // Force refresh — combine cloud + local, dedup, save back to Supabase
       // This ensures nothing is lost from either source
+      localStorage.removeItem('ck_deleted_exp');
+      _deletedExpIds.clear();
       // Union of cloud + local
       const cloudIds = new Set(cloudExp.map(e=>e.id));
-      const localOnly = expectedOrders.filter(e=>!cloudIds.has(e.id) && !_deletedExpIds.has(e.id));
+      const localOnly = expectedOrders.filter(e=>!cloudIds.has(e.id));
       const combined = [...cloudExp, ...localOnly];
-      expectedOrders = dedupeExpectedOrders(combined);
+      // Deduplicate by PO# then vendor+date
+      const seenPO2=new Set(); const seenVD2=new Set();
+      expectedOrders = combined.filter(e=>{
+        if(e.poNumber){ if(seenPO2.has(e.poNumber)) return false; seenPO2.add(e.poNumber); return true; }
+        const k=(e.vendor||'').toLowerCase()+'|'+(e.date||''); if(seenVD2.has(k)) return false; seenVD2.add(k); return true;
+      });
       localStorage.setItem('ck_expected', JSON.stringify(expectedOrders));
       // Save merged result back to Supabase (fire and forget — don't block UI)
       sbSaveExpected().catch(e=>console.warn('save error:', e.message));
@@ -2595,7 +2461,12 @@ async function gmailImportOrders(forceRefresh=false){
     const toMerge = cloudExp.filter(e => !localIds.has(e.id) && !_deletedExpIds.has(e.id));
     const before = expectedOrders.length;
     expectedOrders = [...expectedOrders, ...toMerge];
-    expectedOrders = dedupeExpectedOrders(expectedOrders);
+    // Deduplicate by PO# then vendor+date
+    const seenPO=new Set(); const seenVD=new Set();
+    expectedOrders = expectedOrders.filter(e=>{
+      if(e.poNumber){ if(seenPO.has(e.poNumber)) return false; seenPO.add(e.poNumber); return true; }
+      const k=(e.vendor||'').toLowerCase()+'|'+(e.date||''); if(seenVD.has(k)) return false; seenVD.add(k); return true;
+    });
     localStorage.setItem('ck_expected', JSON.stringify(expectedOrders));
     sbSaveExpected().catch(e=>console.warn('save error:',e.message));
     renderEmployee();
@@ -2614,23 +2485,22 @@ async function gmailImportOrders(forceRefresh=false){
 // ─── EXPECTED ORDERS ──────────────────────────────────────────────────────────
 let expectedOrders = JSON.parse(localStorage.getItem('ck_expected')||'[]');
 
-function dedupeExpectedOrders(list){
-  const seenPO = new Set();
-  const seenVD = new Set();
-  return (list||[]).filter(e=>{
-    if(!e || _deletedExpIds.has(e.id)) return false;
-    if(e.poNumber){
-      const po = String(e.poNumber).trim();
-      if(seenPO.has(po)) return false;
-      seenPO.add(po);
-      return true;
+  // ─── WEEK OF APR 20-22 ORDER SEED ────────────────────────────────────────────
+  (function(){
+    if(localStorage.getItem('ck_exp_v4_done')) return;
+    const _new = [{"id":"exp_v4_1424","vendor":"ASAD","date":"04/20/2026","notes":"PO #1424","poNumber":"1424","createdBy":"Gmail Auto-Import","createdAt":"2026-04-22T15:30:00.000Z","isExpected":true,"matched":false,"fromGmail":true},{"id":"exp_v4_1425","vendor":"SAMS","date":"04/20/2026","notes":"PO #1425","poNumber":"1425","createdBy":"Gmail Auto-Import","createdAt":"2026-04-22T15:30:00.000Z","isExpected":true,"matched":false,"fromGmail":true},{"id":"exp_v4_1426","vendor":"MAYDE","date":"04/22/2026","notes":"PO #1426","poNumber":"1426","createdBy":"Gmail Auto-Import","createdAt":"2026-04-22T15:30:00.000Z","isExpected":true,"matched":false,"fromGmail":true},{"id":"exp_v4_1427","vendor":"MIAMI HAIR","date":"04/22/2026","notes":"PO #1427","poNumber":"1427","createdBy":"Gmail Auto-Import","createdAt":"2026-04-22T15:30:00.000Z","isExpected":true,"matched":false,"fromGmail":true},{"id":"exp_v4_1428","vendor":"OUTRE","date":"04/22/2026","notes":"PO #1428","poNumber":"1428","createdBy":"Gmail Auto-Import","createdAt":"2026-04-22T15:30:00.000Z","isExpected":true,"matched":false,"fromGmail":true},{"id":"exp_v4_1429","vendor":"SENSATIONNEL","date":"04/22/2026","notes":"PO #1429","poNumber":"1429","createdBy":"Gmail Auto-Import","createdAt":"2026-04-22T15:30:00.000Z","isExpected":true,"matched":false,"fromGmail":true},{"id":"exp_v4_1430","vendor":"TEAM MODERN","date":"04/22/2026","notes":"PO #1430","poNumber":"1430","createdBy":"Gmail Auto-Import","createdAt":"2026-04-22T15:30:00.000Z","isExpected":true,"matched":false,"fromGmail":true}];
+    const _pos = new Set(expectedOrders.map(e=>e.poNumber).filter(Boolean));
+    let _n = 0;
+    _new.forEach(o=>{ if(!_pos.has(o.poNumber)){ expectedOrders.push(o); _n++; } });
+    if(_n > 0){
+      localStorage.setItem('ck_expected', JSON.stringify(expectedOrders));
+      setTimeout(()=>sbSaveExpected(), 2000);
+      console.log('Seeded', _n, 'new orders (Apr 20-22)');
     }
-    const k = (e.vendor||'').toLowerCase().trim()+'|'+(e.date||'');
-    if(seenVD.has(k)) return false;
-    seenVD.add(k);
-    return true;
-  });
-}
+    localStorage.setItem('ck_exp_v4_done','1');
+  })();
+  // ─── END SEED ────────────────────────────────────────────────────────────────
+
 
 
 
@@ -2638,7 +2508,20 @@ function dedupeExpectedOrders(list){
 let vendorMaster = ["7UP","ABSOLUTE","ADVANCE DISTRIBUTORS","AFAM","ALICIA - KJ WHOLESALE","ANNIE","ASAD","AVIANCE","BBIM","BEAUTIFUL DAY TRADING","BEAUTY HAIR WHOLESALE","BEAUTY PLUS","BEBE GROUP","BEE SALES","BESHE","BIG MAMA","BKT TRADING","BLACK CALA","BLACK&BOSSIE","BLUE OCEAN","BOHYME","C&CC","C&L","CHADE","CLEARANCE","COSMO BEAUTY SUPPLY","DAMOA","DASO TRADING","DO NOT USE","DODO FASHION","DOLLAR","EBIN","ELTON","FASHION WORLD","FATHER AND DAUGHTER","FOXY SILVER","FRIES BRO","FRITOS","GABRIELLA","GALERIE","GNS TRADING","GOLDSTAR","GRACE IMPORT","GREIS","GRIP TIGHT","GRIPPO","H MART","H2PRO","HAIR HA","HAIR PLUS","HAIR SOUTH INC","HAIR TREND","HAIRLAND","HALF BUNDLE","HALO","HARLEM125","HEAVENLY SCENTS","HINES  & CLEAR","HUSMAN","HW BEAUTY PRO","ICE","ITS A WIG","J & A IMPORT","J CLASS","JC BEAUTY","JINNY BEAUTY","JK TRADING","JOBNOM","JOON TRADING DIETER TEA","JS BEAUTY EXPERT INC","JUJU COLLECTION","KARA HAIR FASHION","KIRGIN CORP","KISS","KLOSTERMAN","KN WHOLESALE","KOEM ENTERPRISES INC","KONEX","KROGER","LA GIRL","LAFLARE","LAUDIC","LEE JEWELRY","LENZ OUTLET","LITTLE DEBBIE","LOG IN APPAREL INC","LUV SPORTS","MANE CONCEPT","MASTERPIECE","MAYDE","MIAMI HAIR","MIDWAY","MINAM TRADING","MISA TRADING","MISS BOND","MISS LASHES","MISUNG","MONEY 4 U","MOTOWN ORADELL","NACKTAS LLC","NATIONAL TOBACCO COMPANY","NEWYORK SUNGLASSES","NICKA K","NOBLESSE","NOVA","NOVA COLLECTION","NUUNCHI INC","OTHER","OUR HEAVENLY SCENTS","OUTRE","PANA LINE","PEACH TOWN","PEPSI","PETRA","PK BEAUTY","PNM TRADING","PNW GLOBAL","POS VENDOR","PRECISION OPTICAL","PRIMA COLLECTION","R&B COLLECTION","R&R CORP","REAL BEAUTY","RED","RED CARPET","RED OWL","RIAH HAIR","RICKING PAPER - JOSHEN","ROYAL BEAUTY","SALE","SAMS","SATYA WHOLESALE","SAVE ME","SENSATIONNEL","SENSUAL COLLECTION","SHA","SHAKE-N-GO","SHK TRADING","SIGNATURE LOOKS INC","SILKY HAIR","SK WIRELESS","SKY TRADING","SM BEAUTY","SO PRETTY","SP IMPORT","SPICE SUPREME","STAGNARO","SUNFLOWER","SUNFLOWER - HOLLYWOOD CONTACT","T&J MAX","TEAM MODERN","TEST","THE WIG","TOPS","TRANSFER","TRI STATE","TRUE COLOR","UNIVERSAL BEAUTY","US HAIR","US MERCHANDISE","VALUE SPOT","VANESSA","VIVACE","VIVICA FOX","VOG NEW YORK","WINK O LASH","YJ WHOLESALE","YOUNGS FASHION","YSU"];
 
 function saveExpected(){
-  expectedOrders = dedupeExpectedOrders(expectedOrders);
+  // Deduplicate before saving
+  const seenPO2 = new Set();
+  const seenVD2 = new Set();
+  expectedOrders = expectedOrders.filter(e=>{
+    if(e.poNumber){
+      if(seenPO2.has(e.poNumber)) return false;
+      seenPO2.add(e.poNumber);
+      return true;
+    }
+    const vdKey = (e.vendor||'').toLowerCase()+'|'+(e.date||'');
+    if(seenVD2.has(vdKey)) return false;
+    seenVD2.add(vdKey);
+    return true;
+  });
   localStorage.setItem('ck_expected', JSON.stringify(expectedOrders));
   sbSaveExpected();
 }
@@ -2661,13 +2544,21 @@ async function sbLoadExpected(){
     const {data} = await supa.from('settings').select('value').eq('key','expected_orders').maybeSingle();
     if(data?.value){
       const cloudExp = JSON.parse(data.value);
-      const before = JSON.stringify(cloudExp);
-      expectedOrders = dedupeExpectedOrders(cloudExp);
-      localStorage.setItem('ck_expected', JSON.stringify(expectedOrders));
-      if(JSON.stringify(expectedOrders) !== before) sbSaveExpected();
-    } else {
-      expectedOrders = [];
-      localStorage.setItem('ck_expected', '[]');
+      // Merge cloud + local, dedup by PO# then vendor+date
+      const localIds = new Set(expectedOrders.map(e=>e.id));
+      const toAdd = cloudExp.filter(e => !localIds.has(e.id) && !_deletedExpIds.has(e.id));
+      if(toAdd.length){
+        expectedOrders = [...expectedOrders, ...toAdd];
+        // Dedup by PO#
+        const seen = new Set();
+        expectedOrders = expectedOrders.filter(e=>{
+          const k = e.poNumber || ((e.vendor||'').toLowerCase()+'|'+(e.date||''));
+          if(seen.has(k)) return false;
+          seen.add(k);
+          return true;
+        });
+        localStorage.setItem('ck_expected', JSON.stringify(expectedOrders));
+      }
     }
     // Also load vendor master additions
     const {data:vd} = await supa.from('settings').select('value').eq('key','vendor_master').maybeSingle();
@@ -2983,12 +2874,7 @@ async function _waitForInvoiceInSupabase(invId, expId, attempts){
       uploaded_by: inv.uploadedBy||'', manual_status: inv.manualStatus||'',
     };
 
-    let {error: writeErr} = await supa.from('invoices').upsert(row, {onConflict:'id'});
-    if(writeErr && /manual_status/i.test(writeErr.message||'')){
-      console.warn('manual_status column missing; retrying direct invoice write without it');
-      const {manual_status, ...fallbackRow} = row;
-      ({error: writeErr} = await supa.from('invoices').upsert(fallbackRow, {onConflict:'id'}));
-    }
+    const {error: writeErr} = await supa.from('invoices').upsert(row, {onConflict:'id'});
     if(writeErr){
       console.warn('Direct write error:', writeErr.message);
       // Write failed — retry up to 3 times with 2s gap
@@ -3078,7 +2964,8 @@ function handleRcv(id,field,val){
   inv[field]=val===''?'':toNum(val);
   inv[field+'ts']=val&&val!==''?fmtTs(new Date()):'';
   inv[field+'by']=val&&val!==''?(currentUser?.name||''):'';
-  saveRcvChange(inv, field);
+  _dirtyIds.add(String(id));
+  save();
   const row=document.querySelector(`tr[data-id="${safeId(id)}"]`);
   if(row){
     const rem=calcRem(inv);
@@ -3090,20 +2977,14 @@ function handleRcv(id,field,val){
 function handleRcvDash(id,field,val){
   const inv=invoices.find(x=>String(x.id)===String(id));
   if(!inv) return;
-  const submitKey = String(id)+'|'+field;
-  const normalizedVal = val===''?'':toNum(val);
-  const last = _lastRcvSubmit[submitKey];
-  if(last && last.val===String(normalizedVal) && Date.now()-last.at < 800) return;
-  _lastRcvSubmit[submitKey] = {val:String(normalizedVal), at:Date.now()};
   inv[field]=val===''?'':toNum(val);
   inv[field+'ts']=val&&val!==''?fmtTs(new Date()):'';
-  const byName = _rcvOverrideBy[submitKey] || currentUser?.name || '';
-  inv[field+'by']=val&&val!==''?byName:'';
-  delete _rcvOverrideBy[submitKey];
+  inv[field+'by']=val&&val!==''?(currentUser?.name||''):'';
   // Flag if RCV was entered on an invoice with no box count
   if(val&&val!==''&&!inv.boxes) inv.rcvOnMissing = true;
   else if(!val) inv.rcvOnMissing = false;
-  saveRcvChange(inv, field);
+  _dirtyIds.add(String(id)); // Mark as having unsaved local changes
+  save(); // saves locally + queues Supabase sync
 
   // Fast targeted DOM update — no full re-render, no scroll jump
   const st=getStatus(inv);
@@ -3434,7 +3315,7 @@ function boxInputHtml(invId, boxes, tab){
   if(tab==='invoice' && currentUser && currentUser.role!=='stock'){
     // Admin/secondary on invoice tab — can enter missing box count
     return `<span style="display:inline-flex;align-items:center;gap:4px" title="Not on invoice — enter box count">
-      <input type="number" min="0" placeholder="?" inputmode="numeric" pattern="[0-9]*" enterkeyhint="done"
+      <input type="number" min="0" placeholder="?"
         style="width:46px;text-align:center;border:1.5px solid #f59e0b;border-radius:4px;padding:2px 4px;font-size:12px;background:var(--surface2);color:var(--text)"
         onchange="quickSetBoxes('${invId}',this.value)"
         onkeydown="if(event.key==='Enter'){event.preventDefault();quickSetBoxes('${invId}',this.value);this.blur();}"
@@ -3535,16 +3416,6 @@ function rcvKeyDown(event, input){
 }
 
 // ─── EDIT ─────────────────────────────────────────────────────────────────────
-function focusNextRcvBox(){
-  const active = document.activeElement;
-  if(active && active.classList && active.classList.contains('wrec-inp')){
-    rcvKeyDown({key:'Enter', preventDefault:()=>{}}, active);
-    return;
-  }
-  const first = document.querySelector('.rcv-first:not([disabled])');
-  if(first){ first.focus(); first.select(); }
-}
-
 function openEdit(id){
   const inv=invoices.find(x=>String(x.id)===String(id));if(!inv) return;
   pendingEdit=id;
@@ -3756,7 +3627,7 @@ function renderWeekly(){
   data.forEach(x=>{const k=getWkKey(x.date);if(!wks[k]){const{start,end}=getWkRange(x.date);wks[k]={invs:[],start,end};}wks[k].invs.push(x);});
   const sorted=Object.entries(wks).sort((a,b)=>new Date(b[0])-new Date(a[0]));
   wrap.innerHTML=sorted.map(([key,wk])=>{
-    const wInvs=wk.invs.sort((a,b)=>ms(b.date)-ms(a.date)||ms(b.addedAt)-ms(a.addedAt));
+    const wInvs=wk.invs.sort((a,b)=>ms(b.date)-ms(a.date));
     const wExps=(wk.exps||[]).sort((a,b)=>ms(b.date)-ms(a.date));
     const wTotal=wInvs.reduce((s,x)=>s+amt(x.total),0);
     const wBoxes=wInvs.reduce((s,x)=>s+(parseFloat(x.boxes)||0),0);
@@ -3767,7 +3638,7 @@ function renderWeekly(){
       const rem=calcRem(x);const isComp=rem===0&&(parseFloat(x.boxes)||0)>0;
       const b=parseFloat(x.boxes)||0;
       const rcvInp=(f)=>`<div class="wrec-cell">
-        <input class="wrec-inp rcv-inp ${f==='rcv1'?'rcv-first':''}" type="number" min="0" inputmode="numeric" pattern="[0-9]*" enterkeyhint="next"
+        <input class="wrec-inp rcv-inp ${f==='rcv1'?'rcv-first':''}" type="number" min="0"
           value="${esc(String(x[f]||''))}"
           data-field="${f}" data-id="${x.id}"
           oninput="handleRcvLive('${x.id}','${f}',this.value)"
@@ -3996,10 +3867,10 @@ function renderEmpWeekly(){
     const wPending=wInvs.filter(x=>getStatus(x)==='pending').length;
     const wPartial=wInvs.filter(x=>getStatus(x)==='partial').length;
     const filteredWInvs = empStatusFilter==='all' ? wInvs : wInvs.filter(x=>getStatus(x)===empStatusFilter);
-    const wExps = (wk.exps || []).sort((a,b)=>ms(b.date)-ms(a.date)||ms(b.createdAt)-ms(a.createdAt));
+    const wExps = wk.exps || [];
     // Only skip if nothing to show at all (no invoices AND no expected orders)
     if(!filteredWInvs.length && !wExps.length) return '';
-    // Build Expected Order rows (amber, shown after real invoices)
+    // Build Expected Order rows (amber, shown before real invoices)
     const expRows = wExps.map(exp=>`
       <tr class="exp-row">
         <td style="width:28px;text-align:center;padding:4px"></td>
@@ -4031,7 +3902,7 @@ function renderEmpWeekly(){
         if(isLocked){
           return `<div class="wrec-cell">
             <div class="wrec-inp-row">
-              <input class="wrec-inp" type="number" min="0" inputmode="numeric" pattern="[0-9]*" enterkeyhint="next"
+              <input class="wrec-inp" type="number" min="0"
                 value="${esc(String(val))}"
                 data-field="${f}" data-id="${x.id}"
                 disabled
@@ -4043,7 +3914,7 @@ function renderEmpWeekly(){
         }
         return `<div class="wrec-cell">
           <div class="wrec-inp-row">
-            <input class="wrec-inp rcv-inp ${f==='rcv1'?'rcv-first':''}" type="number" min="0" inputmode="numeric" pattern="[0-9]*" enterkeyhint="next"
+            <input class="wrec-inp rcv-inp ${f==='rcv1'?'rcv-first':''}" type="number" min="0"
               value="${esc(String(val))}"
               data-field="${f}" data-id="${x.id}"
               oninput="handleRcvLive('${x.id}','${f}',this.value)"
@@ -4107,7 +3978,7 @@ function renderEmpWeekly(){
             <th style="text-align:center">Status</th>
             <th style="width:110px"></th>
           </tr></thead>
-          <tbody>${rows}${expRows}</tbody>
+          <tbody>${expRows}${rows}</tbody>
         </table>
       </div>
     </div>`;
@@ -4378,34 +4249,10 @@ function save(){
   localStorage.setItem('ck_inv',JSON.stringify(invoices));
   sbSaveInvoices().then(()=>{
     const dot = document.getElementById('syncDot');
-    const txt = document.getElementById('syncTxt');
     if(dot){ dot.style.background='#10b981'; dot.title='Synced'; }
-    if(txt) txt.textContent = invoices.length + ' invoices';
   }).catch(()=>{
     const dot = document.getElementById('syncDot');
-    const txt = document.getElementById('syncTxt');
     if(dot){ dot.style.background='#ef4444'; dot.title='Sync failed'; }
-    if(txt) txt.textContent = 'Sync failed';
-    toast('Cloud save failed - check Supabase connection or table permissions','err');
-  });
-}
-function saveRcvChange(inv, field){
-  _lastSaveTime = Date.now();
-  localStorage.setItem('ck_inv',JSON.stringify(invoices));
-  sbIdVariants(inv.id).forEach(v=>_dirtyIds.add(v));
-  sbSaveRcvField(inv, field).then(()=>{
-    sbIdVariants(inv.id).forEach(v=>_dirtyIds.delete(v));
-    const dot = document.getElementById('syncDot');
-    const txt = document.getElementById('syncTxt');
-    if(dot){ dot.style.background='#10b981'; dot.title='Synced'; }
-    if(txt) txt.textContent = invoices.length + ' invoices';
-  }).catch(e=>{
-    console.warn('RCV sync failed:', e.message);
-    const dot = document.getElementById('syncDot');
-    const txt = document.getElementById('syncTxt');
-    if(dot){ dot.style.background='#ef4444'; dot.title='RCV sync failed'; }
-    if(txt) txt.textContent = 'Sync failed';
-    toast('RCV cloud save failed - press Sync after checking connection','err');
   });
 }
 function toast(msg,type='ok'){const t=document.createElement('div');t.className=`toast ${type}`;t.textContent=msg;document.getElementById('toasts').appendChild(t);setTimeout(()=>t.remove(),4000);}
@@ -4544,31 +4391,6 @@ async function forceSyncUsersToCloud(){
     await supa.from('settings').upsert({key:'pin_users', value:JSON.stringify(pinUsers)},{onConflict:'key'});
     toast('✅ Users synced to cloud','ok');
   }catch(e){ toast('⚠️ Sync failed: '+e.message,'err'); }
-}
-
-async function forceSyncInvoicesToCloud(){
-  if(!currentUser || currentUser.role !== 'admin'){
-    toast('Admin only','wrn');
-    return;
-  }
-  if(!invoices.length){
-    toast('No local invoices to push','wrn');
-    return;
-  }
-  const dot = document.getElementById('syncDot');
-  const txt = document.getElementById('syncTxt');
-  try{
-    if(dot) dot.style.background = '#f59e0b';
-    if(txt) txt.textContent = 'Pushing invoices...';
-    const count = await sbSaveInvoices();
-    if(dot){ dot.style.background = '#10b981'; dot.title = 'Synced'; }
-    if(txt) txt.textContent = invoices.length + ' invoices';
-    toast('Pushed '+count+' invoice'+(count!==1?'s':'')+' to cloud','ok');
-  }catch(e){
-    if(dot){ dot.style.background = '#ef4444'; dot.title = 'Sync failed'; }
-    if(txt) txt.textContent = 'Sync failed';
-    toast('Invoice push failed: '+(e.message||e),'err');
-  }
 }
 
 function pinKey(digit){
