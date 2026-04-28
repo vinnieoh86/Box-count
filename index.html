@@ -886,7 +886,30 @@ async function sbSaveInvoices(){
     dirtySnapshot.forEach(id => _dirtyIds.delete(id));
   }
 }
-
+async function sbSaveRcvOnly(id, inv){
+  // Targeted RCV-only update — only touches rcv columns, never overwrites other fields
+  // This prevents sync race conditions where a full upsert from another device wipes RCV data
+  const safeId = String(id).replace(/\./g,'_');
+  const prefixId = safeId.startsWith('inv_') ? safeId : 'inv_' + safeId;
+  const rcvPatch = {
+    rcv1: inv.rcv1!=null && inv.rcv1!=='' ? parseInt(inv.rcv1,10)||0 : 0,
+    rcv1ts: inv.rcv1ts||'',
+    rcv1by: inv.rcv1by||'',
+    rcv2: inv.rcv2!=null && inv.rcv2!=='' ? parseInt(inv.rcv2,10)||0 : 0,
+    rcv2ts: inv.rcv2ts||'',
+    rcv2by: inv.rcv2by||'',
+    rcv3: inv.rcv3!=null && inv.rcv3!=='' ? parseInt(inv.rcv3,10)||0 : 0,
+    rcv3ts: inv.rcv3ts||'',
+    rcv3by: inv.rcv3by||'',
+  };
+  // Try the inv_ prefixed ID first (newer format), fallback to safe ID
+  const {error: e1} = await supa.from('invoices').update(rcvPatch).eq('id', prefixId);
+  if(e1){
+    // Try without prefix
+    const {error: e2} = await supa.from('invoices').update(rcvPatch).eq('id', safeId);
+    if(e2) console.warn('sbSaveRcvOnly error:', e2.message);
+  }
+}
 async function sbDeleteInvoice(id){
   // Try both formats - old float-based and new inv_ prefix
   const safeId = String(id).replace(/\./g,'_');
@@ -2983,8 +3006,13 @@ function handleRcvDash(id,field,val){
   // Flag if RCV was entered on an invoice with no box count
   if(val&&val!==''&&!inv.boxes) inv.rcvOnMissing = true;
   else if(!val) inv.rcvOnMissing = false;
-  _dirtyIds.add(String(id)); // Mark as having unsaved local changes
-  save(); // saves locally + queues Supabase sync
+  // Save RCV change locally
+  localStorage.setItem('ck_inv', JSON.stringify(invoices));
+  // Targeted RCV-only patch to Supabase — does NOT overwrite other fields
+  // This prevents the race condition where full upsert from another device deletes entries
+  sbSaveRcvOnly(id, inv).catch(e => console.warn('RCV save error:', e.message));
+  // Also clear dirty flag since we're saving directly
+  _dirtyIds.delete(String(id));
 
   // Fast targeted DOM update — no full re-render, no scroll jump
   const st=getStatus(inv);
