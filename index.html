@@ -886,10 +886,11 @@ async function sbSaveInvoices(){
     dirtySnapshot.forEach(id => _dirtyIds.delete(id));
   }
 }
+
 async function sbSaveRcvOnly(id, inv){
   // Targeted RCV-only update — only touches rcv columns, never overwrites other fields
-  // This prevents sync race conditions where a full upsert from another device wipes RCV data
-  const safeId = String(id).replace(/\./g,'_');
+  const rawId  = String(id);
+  const safeId = rawId.replace(/\./g,'_');
   const prefixId = safeId.startsWith('inv_') ? safeId : 'inv_' + safeId;
   const rcvPatch = {
     rcv1: inv.rcv1!=null && inv.rcv1!=='' ? parseInt(inv.rcv1,10)||0 : 0,
@@ -902,12 +903,29 @@ async function sbSaveRcvOnly(id, inv){
     rcv3ts: inv.rcv3ts||'',
     rcv3by: inv.rcv3by||'',
   };
-  // Try the inv_ prefixed ID first (newer format), fallback to safe ID
-  const {error: e1} = await supa.from('invoices').update(rcvPatch).eq('id', prefixId);
-  if(e1){
-    // Try without prefix
-    const {error: e2} = await supa.from('invoices').update(rcvPatch).eq('id', safeId);
-    if(e2) console.warn('sbSaveRcvOnly error:', e2.message);
+  // Try ALL possible ID formats — rows may be stored under any of these
+  const ids = [...new Set([prefixId, safeId, rawId])];
+  let saved = false;
+  for(const tryId of ids){
+    const {data, error} = await supa.from('invoices').update(rcvPatch).eq('id', tryId).select('id');
+    if(!error && data && data.length > 0){ saved = true; break; }
+  }
+  if(!saved){
+    console.warn('sbSaveRcvOnly: no row matched, upserting for id:', rawId);
+    const row = {
+      id: prefixId,
+      vendor: inv.vendor||'', date: inv.date||'',
+      invoice_number: inv.invoice_number||'', filename: inv.filename||'',
+      boxes: inv.boxes!=null && inv.boxes!=='' ? parseInt(inv.boxes,10)||0 : 0,
+      total: inv.total!=null && inv.total!=='' ? parseFloat(String(inv.total).replace(/[^0-9.]/g,''))||0 : 0,
+      qty_shipped: inv.qty_shipped!=null && inv.qty_shipped!=='' ? parseInt(inv.qty_shipped,10)||0 : 0,
+      added_at: inv.addedAt||new Date().toISOString(),
+      file_url: inv.fileUrl||'', idb_key: inv.idbKey||'',
+      uploaded_by: inv.uploadedBy||'', manual_status: inv.manualStatus||'',
+      ...rcvPatch
+    };
+    const {error: upErr} = await supa.from('invoices').upsert(row, {onConflict:'id'});
+    if(upErr) console.warn('sbSaveRcvOnly upsert fallback error:', upErr.message);
   }
 }
 async function sbDeleteInvoice(id){
@@ -992,17 +1010,25 @@ async function sbLoadAll(){
         uploadedBy:r.uploaded_by||'', manualStatus:r.manual_status||null,
       }));
 
-      // Only overlay dirty local RCV values (entered on THIS device, not yet saved)
-      if(_dirtyIds.size > 0){
-        const localNow = JSON.parse(localStorage.getItem('ck_inv')||'[]');
+      // Protect local RCV values: local wins if it has a timestamp and cloud doesn't
+      // This prevents auto-sync from wiping values just entered on this device
+      const localNow = JSON.parse(localStorage.getItem('ck_inv')||'[]');
+      if(localNow.length > 0){
         cloudInvoices.forEach(ci => {
           const cid = String(ci.id).replace(/\./g,'_').replace(/^inv_/,'');
-          if(!_dirtyIds.has(ci.id) && !_dirtyIds.has(cid)) return;
           const li = localNow.find(x => String(x.id).replace(/\./g,'_').replace(/^inv_/,'') === cid);
           if(!li) return;
-          ci.rcv1=li.rcv1||ci.rcv1; ci.rcv1ts=li.rcv1ts||ci.rcv1ts; ci.rcv1by=li.rcv1by||ci.rcv1by;
-          ci.rcv2=li.rcv2||ci.rcv2; ci.rcv2ts=li.rcv2ts||ci.rcv2ts; ci.rcv2by=li.rcv2by||ci.rcv2by;
-          ci.rcv3=li.rcv3||ci.rcv3; ci.rcv3ts=li.rcv3ts||ci.rcv3ts; ci.rcv3by=li.rcv3by||ci.rcv3by;
+          // Local wins if it has a timestamp (user entered value) and cloud has none
+          if(li.rcv1ts && !ci.rcv1ts){ ci.rcv1=li.rcv1; ci.rcv1ts=li.rcv1ts; ci.rcv1by=li.rcv1by||''; }
+          if(li.rcv2ts && !ci.rcv2ts){ ci.rcv2=li.rcv2; ci.rcv2ts=li.rcv2ts; ci.rcv2by=li.rcv2by||''; }
+          if(li.rcv3ts && !ci.rcv3ts){ ci.rcv3=li.rcv3; ci.rcv3ts=li.rcv3ts; ci.rcv3by=li.rcv3by||''; }
+          // Also protect if row is in _dirtyIds (save still in flight)
+          const cid2 = cid.replace(/^inv_/,'');
+          if(_dirtyIds.has(ci.id) || _dirtyIds.has(cid) || _dirtyIds.has(cid2)){
+            if(li.rcv1) ci.rcv1=li.rcv1; if(li.rcv1ts) ci.rcv1ts=li.rcv1ts; if(li.rcv1by) ci.rcv1by=li.rcv1by;
+            if(li.rcv2) ci.rcv2=li.rcv2; if(li.rcv2ts) ci.rcv2ts=li.rcv2ts; if(li.rcv2by) ci.rcv2by=li.rcv2by;
+            if(li.rcv3) ci.rcv3=li.rcv3; if(li.rcv3ts) ci.rcv3ts=li.rcv3ts; if(li.rcv3by) ci.rcv3by=li.rcv3by;
+          }
         });
       }
 
@@ -1045,17 +1071,11 @@ async function sbLoadAll(){
       const {data:expSync} = await supa.from('settings').select('value').eq('key','expected_orders').maybeSingle();
       if(expSync?.value){
         const cloudExp = JSON.parse(expSync.value);
-        // Only add cloud orders not already in local AND not deleted
-        const localIds2 = new Set(expectedOrders.map(e=>e.id));
-        const newFromCloud = cloudExp.filter(e=>!localIds2.has(e.id) && !_deletedExpIds.has(e.id));
-        if(newFromCloud.length){
-          expectedOrders = [...expectedOrders, ...newFromCloud];
-          localStorage.setItem('ck_expected', JSON.stringify(expectedOrders));
-        }
-        // If local has MORE than cloud (e.g. deletions on this device), save back
-        if(expectedOrders.length < cloudExp.filter(e=>!_deletedExpIds.has(e.id)).length === false){
-          // local is already merged
-        }
+        // Supabase is truth for expected orders — replace local with cloud version
+        // filtered by locally-deleted IDs. This ensures matched/deleted orders
+        // disappear on all devices after sync, not just the device that matched them.
+        expectedOrders = cloudExp.filter(e => !_deletedExpIds.has(e.id));
+        localStorage.setItem('ck_expected', JSON.stringify(expectedOrders));
       }
     }catch(e){ console.warn('expected sync:', e.message); }
 
@@ -3006,13 +3026,11 @@ function handleRcvDash(id,field,val){
   // Flag if RCV was entered on an invoice with no box count
   if(val&&val!==''&&!inv.boxes) inv.rcvOnMissing = true;
   else if(!val) inv.rcvOnMissing = false;
-  // Save RCV change locally
+  // Save locally + targeted Supabase patch (does NOT overwrite other fields)
   localStorage.setItem('ck_inv', JSON.stringify(invoices));
-  // Targeted RCV-only patch to Supabase — does NOT overwrite other fields
-  // This prevents the race condition where full upsert from another device deletes entries
   sbSaveRcvOnly(id, inv).catch(e => console.warn('RCV save error:', e.message));
-  // Also clear dirty flag since we're saving directly
-  _dirtyIds.delete(String(id));
+  // Keep dirty so sbLoadAll protects this value during next auto-sync
+  _dirtyIds.add(String(id));
 
   // Fast targeted DOM update — no full re-render, no scroll jump
   const st=getStatus(inv);
