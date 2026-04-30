@@ -442,14 +442,9 @@ tbody tr:hover .delbtn,tbody tr:hover .editbtn{opacity:1;}
   /* Table horizontal scroll */
   .card{overflow-x:auto;}
   table{min-width:500px;}
-  /* Weekly tracker — compact on mobile */
+  /* Weekly tracker horizontal scroll */
   .week-body{overflow-x:auto;}
-  .week-tbl{min-width:0;width:100%;}
-  .week-tbl th:nth-child(1),.week-tbl td:nth-child(1){display:none;}
-  .week-tbl th:nth-child(3),.week-tbl td:nth-child(3){display:none;}
-  .week-tbl th:nth-child(4),.week-tbl td:nth-child(4){display:none;}
-  .week-tbl th:nth-child(11),.week-tbl td:nth-child(11){display:none;}
-  .wrec-inp{width:50px;font-size:15px;padding:6px 2px;}
+  .week-tbl{min-width:700px;}
   /* KPI single column on very small */
   .week-pills{gap:4px;}
   .week-pill{font-size:10px;padding:2px 8px;}
@@ -858,37 +853,40 @@ const SUPA_URL = 'https://ucqathphqoijoadxqwja.supabase.co';
 const SUPA_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InVjcWF0aHBocW9pam9hZHhxd2phIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzU1OTY4NTEsImV4cCI6MjA5MTE3Mjg1MX0.Rp6eDFDrs1eVRC1w6ULrHBBqL9jBYHPoIS-xddvl9MQ';
 const supa = supabase.createClient(SUPA_URL, SUPA_KEY);
 
-// ─── CORE SYNC ENGINE ────────────────────────────────────────────────────────
-// Single source of truth: Supabase.
-// All IDs stored as-is — we never reformat IDs, we DISCOVER the real ID from Supabase.
-
 async function sbSaveInvoices(){
   if(!invoices.length) return;
+  const dirtySnapshot = new Set(_dirtyIds); // snapshot which IDs we're saving
   const rows = invoices.map(x=>({
     id: String(x.id).replace(/\./g,'_'),
     vendor: x.vendor||'', date: x.date||'',
     invoice_number: x.invoice_number||'', filename: x.filename||'',
-    boxes: x.boxes!=null&&x.boxes!==''?parseInt(x.boxes,10)||0:0,
-    total: x.total!=null&&x.total!==''?parseFloat(String(x.total).replace(/[^0-9.]/g,''))||0:0,
-    qty_shipped: x.qty_shipped!=null&&x.qty_shipped!==''?parseInt(x.qty_shipped,10)||0:0,
+    boxes: x.boxes!=null && x.boxes!=='' ? parseInt(x.boxes,10)||0 : 0,
+    total: x.total!=null && x.total!=='' ? parseFloat(String(x.total).replace(/[^0-9.]/g,''))||0 : 0,
+    qty_shipped: x.qty_shipped!=null && x.qty_shipped!=='' ? parseInt(x.qty_shipped,10)||0 : 0,
     added_at: x.addedAt||new Date().toISOString(),
-    file_url: x.fileUrl||'', idb_key: x.idbKey||'',
-    rcv1: x.rcv1!=null&&x.rcv1!==''?parseInt(x.rcv1,10)||0:0,
-    rcv1ts: x.rcv1ts||'', rcv1by: x.rcv1by||'',
-    rcv2: x.rcv2!=null&&x.rcv2!==''?parseInt(x.rcv2,10)||0:0,
-    rcv2ts: x.rcv2ts||'', rcv2by: x.rcv2by||'',
-    rcv3: x.rcv3!=null&&x.rcv3!==''?parseInt(x.rcv3,10)||0:0,
-    rcv3ts: x.rcv3ts||'', rcv3by: x.rcv3by||'',
-    uploaded_by: x.uploadedBy||'', manual_status: x.manualStatus||'',
+    file_url: x.fileUrl||'',
+    idb_key: x.idbKey||'',
+    rcv1: x.rcv1!=null && x.rcv1!=='' ? parseInt(x.rcv1,10)||0 : 0,
+    rcv1ts: x.rcv1ts||'',
+    rcv1by: x.rcv1by||'',
+    rcv2: x.rcv2!=null && x.rcv2!=='' ? parseInt(x.rcv2,10)||0 : 0,
+    rcv2ts: x.rcv2ts||'',
+    rcv2by: x.rcv2by||'',
+    rcv3: x.rcv3!=null && x.rcv3!=='' ? parseInt(x.rcv3,10)||0 : 0,
+    rcv3ts: x.rcv3ts||'',
+    rcv3by: x.rcv3by||'',
+    uploaded_by: x.uploadedBy||'',
+    manual_status: x.manualStatus||'',
   }));
-  const {error} = await supa.from('invoices').upsert(rows,{onConflict:'id'});
-  if(error) console.error('sbSaveInvoices error:',error.message);
-  else _dirtyIds.clear();
+  const {error} = await supa.from('invoices').upsert(rows, {onConflict:'id'});
+  if(error){
+    console.error('Supabase save error:', error.message);
+  } else {
+    // Clear dirty flags for IDs that were successfully saved
+    dirtySnapshot.forEach(id => _dirtyIds.delete(id));
+  }
 }
 
-// Save ONLY the rcv columns for one invoice.
-// Discovers the real Supabase row ID by querying with invoice_number,
-// so it works regardless of what ID format the row was originally stored under.
 async function sbSaveRcvOnly(id, inv){
   const patch = {
     rcv1: inv.rcv1!=null&&inv.rcv1!==''?parseInt(inv.rcv1,10)||0:0,
@@ -898,226 +896,213 @@ async function sbSaveRcvOnly(id, inv){
     rcv3: inv.rcv3!=null&&inv.rcv3!==''?parseInt(inv.rcv3,10)||0:0,
     rcv3ts: inv.rcv3ts||'', rcv3by: inv.rcv3by||'',
   };
-
-  // Build all possible ID formats this row might be stored under
-  const raw  = String(id);
-  const safe = raw.replace(/\./g,'_');
-  const prefixed = safe.startsWith('inv_') ? safe : 'inv_'+safe;
-  const tryIds = [...new Set([raw, safe, prefixed])];
-
-  // Try each ID format
-  for(const tryId of tryIds){
-    const {data,error} = await supa.from('invoices').update(patch).eq('id',tryId).select('id');
-    if(!error && data && data.length>0){
-      console.log('✓ RCV saved, id='+tryId, 'rcv1='+patch.rcv1,'rcv2='+patch.rcv2,'rcv3='+patch.rcv3);
-      _dirtyIds.delete(raw);
-      return;
-    }
-  }
-
-  // None of the ID formats matched — find the real ID by invoice_number
-  if(inv.invoice_number){
-    const {data:found} = await supa.from('invoices')
-      .select('id').eq('invoice_number', inv.invoice_number).maybeSingle();
-    if(found?.id){
-      const {data:upd,error:upErr} = await supa.from('invoices').update(patch).eq('id',found.id).select('id');
-      if(!upErr && upd && upd.length>0){
-        console.log('✓ RCV saved by invoice_number lookup, id='+found.id);
-        // Update local ID to match what Supabase actually has
-        inv.id = found.id;
-        localStorage.setItem('ck_inv', JSON.stringify(invoices));
-        _dirtyIds.delete(raw);
-        return;
+  // Try the 3 possible ID formats this row may be stored under
+  const raw=String(id), safe=raw.replace(/\./g,'_');
+  const pre=safe.startsWith('inv_')?safe:'inv_'+safe;
+  for(const tryId of [raw,safe,pre]){
+    try{
+      const {data,error}=await supa.from('invoices').update(patch).eq('id',tryId).select('id');
+      if(!error&&data&&data.length>0){
+        console.log('RCV saved id='+tryId+' rcv1='+patch.rcv1);
+        _dirtyIds.delete(raw); return;
       }
-    }
+    }catch(e){}
   }
-
-  // Last resort: upsert full row
-  console.warn('sbSaveRcvOnly: no existing row found, upserting:', prefixed);
-  const fullRow = {
-    id: prefixed, vendor:inv.vendor||'', date:inv.date||'',
-    invoice_number:inv.invoice_number||'', filename:inv.filename||'',
-    boxes:inv.boxes!=null&&inv.boxes!==''?parseInt(inv.boxes,10)||0:0,
-    total:inv.total!=null&&inv.total!==''?parseFloat(String(inv.total).replace(/[^0-9.]/g,''))||0:0,
-    qty_shipped:inv.qty_shipped!=null&&inv.qty_shipped!==''?parseInt(inv.qty_shipped,10)||0:0,
-    added_at:inv.addedAt||new Date().toISOString(),
+  // Not found — try lookup by invoice_number
+  if(inv.invoice_number){
+    try{
+      const {data:found}=await supa.from('invoices').select('id').eq('invoice_number',inv.invoice_number).limit(1);
+      if(found&&found.length>0){
+        const realId=found[0].id;
+        const {data:upd}=await supa.from('invoices').update(patch).eq('id',realId).select('id');
+        if(upd&&upd.length>0){
+          console.log('RCV saved by inv# lookup id='+realId+' rcv1='+patch.rcv1);
+          inv.id=realId; localStorage.setItem('ck_inv',JSON.stringify(invoices));
+          _dirtyIds.delete(raw); return;
+        }
+      }
+    }catch(e){}
+  }
+  // Last resort: full upsert
+  console.warn('RCV upsert fallback id='+pre);
+  const row={id:pre,vendor:inv.vendor||'',date:inv.date||'',
+    invoice_number:inv.invoice_number||'',filename:inv.filename||'',
+    boxes:parseInt(inv.boxes)||0, total:parseFloat(String(inv.total||'').replace(/[^0-9.]/g,''))||0,
+    qty_shipped:parseInt(inv.qty_shipped)||0, added_at:inv.addedAt||new Date().toISOString(),
     file_url:inv.fileUrl||'', idb_key:inv.idbKey||'',
-    uploaded_by:inv.uploadedBy||'', manual_status:inv.manualStatus||'',
-    ...patch
-  };
-  const {error:upErr2} = await supa.from('invoices').upsert(fullRow,{onConflict:'id'});
-  if(upErr2) console.error('sbSaveRcvOnly upsert error:',upErr2.message);
-  else { _dirtyIds.delete(raw); console.log('✓ RCV upserted:', prefixed); }
+    uploaded_by:inv.uploadedBy||'', manual_status:inv.manualStatus||'', ...patch};
+  await supa.from('invoices').upsert(row,{onConflict:'id'});
+  _dirtyIds.delete(raw);
 }
 
 async function sbDeleteInvoice(id){
-  const raw=String(id); const safe=raw.replace(/\./g,'_');
-  const prefixed=safe.startsWith('inv_')?safe:'inv_'+safe;
-  await supa.from('invoices').delete().in('id',[raw,safe,prefixed]);
+  // Try both formats - old float-based and new inv_ prefix
+  const safeId = String(id).replace(/\./g,'_');
+  const invId = 'inv_' + id;
+  await supa.from('invoices').delete().in('id', [safeId, invId, String(id)]);
 }
+
 async function sbClearAll(){
+  // Delete every row from Supabase invoices table
   await supa.from('invoices').delete().neq('id','__never__');
 }
+
 async function sbSaveArchive(){
   try{
-    await supa.from('archived_weeks').delete().neq('week_key','__never__');
+    // Delete all existing rows first, then insert current state
+    // This ensures restored weeks are actually removed from Supabase
+    await supa.from('archived_weeks').delete().neq('week_key', '__never__');
     if(archived.length){
-      const rows=archived.map(a=>({week_key:a.weekKey,week_label:a.weekLabel,archived_at:a.archivedAt,invoices:a.invoices}));
+      const rows = archived.map(a=>({
+        week_key: a.weekKey, week_label: a.weekLabel,
+        archived_at: a.archivedAt, invoices: a.invoices
+      }));
       await supa.from('archived_weeks').insert(rows);
     }
-  }catch(e){console.error('sbSaveArchive error:',e.message);}
+  }catch(e){ console.error('sbSaveArchive error:', e.message); }
 }
+
 async function sbSaveAliases(){
   if(!aliases.length) return;
   try{
-    const {error}=await supa.from('aliases').upsert(aliases.map(a=>({'from':a.from,'to':a.to})),{onConflict:'from'});
+    // Upsert on 'from' field — no delete needed, no id column required
+    const {error} = await supa.from('aliases')
+      .upsert(aliases.map(a=>({'from':a.from,'to':a.to})), {onConflict:'from'});
     if(error){
+      // Fallback: delete all then re-insert
       await supa.from('aliases').delete().neq('from','__never__');
       await supa.from('aliases').insert(aliases.map(a=>({'from':a.from,'to':a.to})));
     }
-  }catch(e){console.warn('Alias save error:',e.message);}
+  }catch(e){ console.warn('Alias save error:', e.message); }
 }
 
 async function sbLoadAll(){
   try{
     // ── 1. Archived weeks ────────────────────────────────────────────
-    const {data:arch}=await supa.from('archived_weeks').select('*');
-    if(arch!==null){
-      archived=arch.map(r=>({weekKey:r.week_key,weekLabel:r.week_label,archivedAt:r.archived_at,invoices:r.invoices||[]}));
-      localStorage.setItem('ck_archived',JSON.stringify(archived));
+    const {data:arch} = await supa.from('archived_weeks').select('*');
+    if(arch !== null){
+      archived = arch.map(r=>({
+        weekKey:r.week_key, weekLabel:r.week_label,
+        archivedAt:r.archived_at, invoices:r.invoices||[]
+      }));
+      localStorage.setItem('ck_archived', JSON.stringify(archived));
       _rebuildArchivedIds();
     }
+
     if(_mergePending) return true;
 
-    // ── 2. Active invoices ───────────────────────────────────────────
-    const {data:inv,error:e1}=await supa.from('invoices').select('*').order('added_at',{ascending:false});
+    // ── 2. Active invoices — Supabase is truth ───────────────────────
+    const {data:inv, error:e1} = await supa.from('invoices').select('*').order('added_at',{ascending:false});
     if(e1) throw e1;
 
-    const archivedIds=new Set();
-    archived.forEach(wk=>wk.invoices.forEach(x=>{
-      const s=String(x.id);
-      archivedIds.add(s);archivedIds.add(s.replace(/^inv_/,''));
-      archivedIds.add('inv_'+s.replace(/^inv_/,''));archivedIds.add(s.replace(/\./g,'_'));
+    // Build archived ID set
+    const archivedIds = new Set();
+    archived.forEach(wk => wk.invoices.forEach(x => {
+      const id = String(x.id);
+      archivedIds.add(id); archivedIds.add(id.replace(/^inv_/,''));
+      archivedIds.add('inv_'+id.replace(/^inv_/,'')); archivedIds.add(id.replace(/\./g,'_'));
     }));
 
-    if(inv&&inv.length>0){
-      // Map rows — use r.rcv1 ?? '' so 0 stays 0 (not converted to '')
-      const allRows = inv
-        .filter(r=>!archivedIds.has(String(r.id)))
-        .map(r=>({
-          id:r.id, vendor:r.vendor, date:r.date,
-          invoice_number:r.invoice_number, filename:r.filename,
-          fileUrl:r.file_url||'', idbKey:r.idb_key||'',
-          boxes:r.boxes,
-          total:r.total!=null?'$'+parseFloat(r.total).toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2}):'',
-          qty_shipped:r.qty_shipped, addedAt:r.added_at,
-          rcv1:r.rcv1??'', rcv1ts:r.rcv1ts||'', rcv1by:r.rcv1by||'',
-          rcv2:r.rcv2??'', rcv2ts:r.rcv2ts||'', rcv2by:r.rcv2by||'',
-          rcv3:r.rcv3??'', rcv3ts:r.rcv3ts||'', rcv3by:r.rcv3by||'',
-          uploadedBy:r.uploaded_by||'', manualStatus:r.manual_status||null,
-        }));
+    if(inv && inv.length > 0){
+      const cloudInvoices = inv.filter(r => !archivedIds.has(String(r.id))).map(r=>({
+        id:r.id, vendor:r.vendor, date:r.date,
+        invoice_number:r.invoice_number, filename:r.filename,
+        fileUrl:r.file_url||'', idbKey:r.idb_key||'',
+        boxes:r.boxes,
+        total: r.total!=null ? '$'+parseFloat(r.total).toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2}) : '',
+        qty_shipped:r.qty_shipped, addedAt:r.added_at,
+        rcv1:r.rcv1??'', rcv1ts:r.rcv1ts||'', rcv1by:r.rcv1by||'',
+        rcv2:r.rcv2??'', rcv2ts:r.rcv2ts||'', rcv2by:r.rcv2by||'',
+        rcv3:r.rcv3??'', rcv3ts:r.rcv3ts||'', rcv3by:r.rcv3by||'',
+        uploadedBy:r.uploaded_by||'', manualStatus:r.manual_status||null,
+      }));
 
-      // Deduplicate by invoice_number+vendor — keep row with MOST rcv data
-      // This handles the case where old-format and inv_-prefix rows both exist
-      const bestByInvoice = new Map(); // key: vendor|invoice_number → best row
-      const noInvoiceRows = [];
-      allRows.forEach(r=>{
-        const invNum = String(r.invoice_number||'').trim().toLowerCase().replace(/_fl$|_8$/,'');
-        const ven    = String(r.vendor||'').trim().toLowerCase();
-        if(!invNum){ noInvoiceRows.push(r); return; }
-        const key = ven+'|'+invNum;
-        if(!bestByInvoice.has(key)){
-          bestByInvoice.set(key,r);
-        } else {
-          const existing = bestByInvoice.get(key);
-          const rRcv=(r.rcv1||0)+(r.rcv2||0)+(r.rcv3||0);
-          const eRcv=(existing.rcv1||0)+(existing.rcv2||0)+(existing.rcv3||0);
-          if(rRcv>eRcv||(rRcv===eRcv&&r.rcv1ts&&!existing.rcv1ts)){
-            // This row has better data — use it, delete the worse duplicate from Supabase
-            supa.from('invoices').delete().eq('id',existing.id).catch(()=>{});
-            bestByInvoice.set(key,r);
-          } else {
-            // Existing row is better — delete this duplicate from Supabase
-            supa.from('invoices').delete().eq('id',r.id).catch(()=>{});
-          }
-        }
-      });
-      const cloudInvoices = [...bestByInvoice.values(), ...noInvoiceRows];
-
-      // Protect dirty IDs: local RCV wins if save hasn't confirmed yet
-      if(_dirtyIds.size>0){
-        const localNow=JSON.parse(localStorage.getItem('ck_inv')||'[]');
-        cloudInvoices.forEach(ci=>{
-          const sid=String(ci.id);
-          const safe=sid.replace(/\./g,'_');
-          const prefixed=safe.startsWith('inv_')?safe:'inv_'+safe;
-          const isDirty=_dirtyIds.has(sid)||_dirtyIds.has(safe)||_dirtyIds.has(prefixed);
-          if(!isDirty) return;
-          const li=localNow.find(x=>{
-            const xs=String(x.id).replace(/\./g,'_');
-            return xs===safe||xs===prefixed||(x.invoice_number&&x.invoice_number===ci.invoice_number);
-          });
+      // Only overlay dirty local RCV values (entered on THIS device, not yet saved)
+      if(_dirtyIds.size > 0){
+        const localNow = JSON.parse(localStorage.getItem('ck_inv')||'[]');
+        cloudInvoices.forEach(ci => {
+          const cid = String(ci.id).replace(/\./g,'_').replace(/^inv_/,'');
+          if(!_dirtyIds.has(ci.id) && !_dirtyIds.has(cid)) return;
+          const li = localNow.find(x => String(x.id).replace(/\./g,'_').replace(/^inv_/,'') === cid);
           if(!li) return;
-          if(li.rcv1ts){ci.rcv1=li.rcv1;ci.rcv1ts=li.rcv1ts;ci.rcv1by=li.rcv1by||'';}
-          if(li.rcv2ts){ci.rcv2=li.rcv2;ci.rcv2ts=li.rcv2ts;ci.rcv2by=li.rcv2by||'';}
-          if(li.rcv3ts){ci.rcv3=li.rcv3;ci.rcv3ts=li.rcv3ts;ci.rcv3by=li.rcv3by||'';}
+          ci.rcv1=li.rcv1||ci.rcv1; ci.rcv1ts=li.rcv1ts||ci.rcv1ts; ci.rcv1by=li.rcv1by||ci.rcv1by;
+          ci.rcv2=li.rcv2||ci.rcv2; ci.rcv2ts=li.rcv2ts||ci.rcv2ts; ci.rcv2by=li.rcv2by||ci.rcv2by;
+          ci.rcv3=li.rcv3||ci.rcv3; ci.rcv3ts=li.rcv3ts||ci.rcv3ts; ci.rcv3by=li.rcv3by||ci.rcv3by;
         });
       }
 
-      // Add invoices uploaded locally in last 3 mins not yet in cloud
-      const cloudInvNums=new Set(cloudInvoices.map(x=>String(x.invoice_number||'').trim().toLowerCase()));
-      const localNow2=JSON.parse(localStorage.getItem('ck_inv')||'[]');
-      const fresh=localNow2.filter(x=>{
-        if(_deletedIds.has(String(x.id))) return false;
-        const invNum=String(x.invoice_number||'').trim().toLowerCase();
-        if(cloudInvNums.has(invNum)) return false;
-        return (Date.now()-new Date(x.addedAt||0).getTime())<180000;
+      // Add invoices uploaded on this device in last 3 mins not yet in cloud
+      const cloudIds = new Set(cloudInvoices.map(x=>String(x.id).replace(/\./g,'_').replace(/^inv_/,'')));
+      const localNow2 = JSON.parse(localStorage.getItem('ck_inv')||'[]');
+      const fresh = localNow2.filter(x=>{
+        const xid = String(x.id).replace(/\./g,'_').replace(/^inv_/,'');
+        if(cloudIds.has(xid) || _deletedIds.has(String(x.id))) return false;
+        return (Date.now() - new Date(x.addedAt||0).getTime()) < 180000;
       });
 
-      invoices=[...cloudInvoices,...fresh];
-      localStorage.setItem('ck_inv',JSON.stringify(invoices));
+      // Deduplicate by id then vendor+invoice
+      const seenIds = new Set(); const seenVI = new Set();
+      invoices = [...cloudInvoices, ...fresh].filter(x => {
+        const xid = String(x.id).replace(/\./g,'_');
+        if(seenIds.has(xid)) return false; seenIds.add(xid);
+        const inv2 = String(x.invoice_number||'').trim().toLowerCase().replace(/_fl$|_8$/,'');
+        const ven = String(x.vendor||'').trim().toLowerCase();
+        if(inv2){ const vk=ven+'|'+inv2; if(seenVI.has(vk)) return false; seenVI.add(vk); }
+        return true;
+      });
+      localStorage.setItem('ck_inv', JSON.stringify(invoices));
+
+    } else if(inv && inv.length === 0 && invoices.length === 0){
+      // Both cloud and local empty — nothing to do
     }
+    // If cloud empty but local has data, keep local (offline mode)
 
     // ── 3. Aliases ───────────────────────────────────────────────────
-    const {data:al}=await supa.from('aliases').select('*');
-    if(al&&al.length){
-      const saved=new Set(al.map(a=>a.from.toLowerCase().trim()));
-      const missing=DEFAULT_ALIASES.filter(d=>!saved.has(d.from.toLowerCase().trim()));
-      aliases=[...al.map(a=>({from:a.from,to:a.to})),...missing];
+    const {data:al} = await supa.from('aliases').select('*');
+    if(al && al.length){
+      const saved = new Set(al.map(a=>a.from.toLowerCase().trim()));
+      const missing = DEFAULT_ALIASES.filter(d=>!saved.has(d.from.toLowerCase().trim()));
+      aliases = [...al.map(a=>({from:a.from,to:a.to})), ...missing];
     }
 
     // ── 4. Expected orders — Supabase is truth ───────────────────────
     try{
-      const {data:expSync}=await supa.from('settings').select('value').eq('key','expected_orders').maybeSingle();
+      const {data:expSync} = await supa.from('settings').select('value').eq('key','expected_orders').maybeSingle();
       if(expSync?.value){
-        const cloudExp=JSON.parse(expSync.value);
-        expectedOrders=cloudExp.filter(e=>!_deletedExpIds.has(e.id));
-        localStorage.setItem('ck_expected',JSON.stringify(expectedOrders));
+        const cloudExp = JSON.parse(expSync.value);
+        // Only add cloud orders not already in local AND not deleted
+        const localIds2 = new Set(expectedOrders.map(e=>e.id));
+        const newFromCloud = cloudExp.filter(e=>!localIds2.has(e.id) && !_deletedExpIds.has(e.id));
+        if(newFromCloud.length){
+          expectedOrders = [...expectedOrders, ...newFromCloud];
+          localStorage.setItem('ck_expected', JSON.stringify(expectedOrders));
+        }
+        // If local has MORE than cloud (e.g. deletions on this device), save back
+        if(expectedOrders.length < cloudExp.filter(e=>!_deletedExpIds.has(e.id)).length === false){
+          // local is already merged
+        }
       }
-    }catch(e){console.warn('expected sync:',e.message);}
+    }catch(e){ console.warn('expected sync:', e.message); }
 
-    console.log('✓ Supabase loaded:',invoices.length,'invoices');
-    if(aliases.length) localStorage.setItem('ck_aliases',JSON.stringify(aliases));
-    const dot=document.getElementById('syncDot');
-    const txt=document.getElementById('syncTxt');
-    if(dot) dot.style.background='#10b981';
-    if(txt) txt.textContent=invoices.length+' invoices';
+    console.log('✓ Supabase loaded:', invoices.length, 'invoices');
+    // Keep localStorage aliases in sync with Supabase
+    if(aliases.length) localStorage.setItem('ck_aliases', JSON.stringify(aliases));
+    // Update sync indicator
+    const dot = document.getElementById('syncDot');
+    const txt = document.getElementById('syncTxt');
+    if(dot) dot.style.background = '#10b981';
+    if(txt) txt.textContent = invoices.length + ' invoices';
     return true;
-  }catch(err){
-    console.error('Supabase load error:',err.message);
-    const dot=document.getElementById('syncDot');
-    const txt=document.getElementById('syncTxt');
-    if(dot) dot.style.background='#ef4444';
-    if(txt) txt.textContent='Offline';
-    // Show actual error in console for debugging
-    if(typeof err.message === 'string' && err.message.includes('supabase')){
-      console.error('HINT: Supabase library may not have loaded yet');
-    }
+  } catch(err){
+    console.error('Supabase load error:', err.message);
+    const dot = document.getElementById('syncDot');
+    const txt = document.getElementById('syncTxt');
+    if(dot) dot.style.background = '#ef4444';
+    if(txt) txt.textContent = 'Offline';
     return false;
   }
 }
 // ─── END SUPABASE ─────────────────────────────────────────────────────────────
-
 
 // ─── STATE ────────────────────────────────────────────────────────────────────
 let invoices = JSON.parse(localStorage.getItem('ck_inv') || '[]');
@@ -3046,10 +3031,9 @@ function handleRcvDash(id,field,val){
   // Flag if RCV was entered on an invoice with no box count
   if(val&&val!==''&&!inv.boxes) inv.rcvOnMissing = true;
   else if(!val) inv.rcvOnMissing = false;
-  // Save locally, then targeted RCV-only patch to Supabase
-  localStorage.setItem('ck_inv', JSON.stringify(invoices));
+  localStorage.setItem('ck_inv',JSON.stringify(invoices));
   _dirtyIds.add(String(id));
-  sbSaveRcvOnly(id, inv).catch(e=>console.warn('RCV save error:',e.message));
+  sbSaveRcvOnly(id,inv).catch(e=>console.warn('RCV err:',e.message));
 
   // Fast targeted DOM update — no full re-render, no scroll jump
   const st=getStatus(inv);
@@ -3403,33 +3387,26 @@ function startAutoSync(){
     // Don't sync if not logged in or PIN screen showing
     if(!currentUser) return;
     if(!document.getElementById('pinOverlay').classList.contains('hidden')) return;
-    // Don't sync if a merge is in progress
+    // Don't sync if we just saved a new invoice — wait for Supabase to settle
+    if(Date.now() - _lastSaveTime < 15000) return;
+    // Don't sync if a merge is in progress — would wipe the invoice before confirm
     if(_mergePending) return;
-    // Don't sync if we just saved — wait for Supabase to settle
-    if(Date.now() - _lastSaveTime < 8000) return;
 
     const prevIds = new Set(invoices.map(x=>String(x.id)));
     const prevCount = invoices.length;
-    const syncOk = await sbLoadAll();
-
-    if(!syncOk){
-      // Update indicator to show offline
-      const dot = document.getElementById('syncDot');
-      const txt = document.getElementById('syncTxt');
-      if(dot) dot.style.background = '#ef4444';
-      if(txt) txt.textContent = 'Reconnecting...';
-      return; // Will retry next interval
-    }
-
+    await sbLoadAll();
     const newCount = invoices.length;
+
+    // Figure out what changed
     const added   = invoices.filter(x=>!prevIds.has(String(x.id))).length;
     const removed = prevCount - newCount + added;
 
+    // Re-render only the currently active tab — no page jump, no logout
     refreshActiveTab();
 
     if(added > 0)   toast(`📥 ${added} new invoice${added!==1?'s':''} synced`,'ok');
     if(removed > 0) toast(`🗑 ${removed} invoice${removed!==1?'s':''} removed on another device`,'wrn');
-  }, 15000); // every 15 seconds — faster sync for better multi-device experience
+  }, 15000); // every 15s — faster multi-device sync
 }
 
 function refreshActiveTab(){
@@ -3999,8 +3976,7 @@ function renderEmpWeekly(){
               onchange="handleRcvDash('${x.id}','${f}',this.value)"
               onkeydown="rcvKeyDown(event,this)"
               onblur="handleRcvDash('${x.id}','${f}',this.value)"
-              onfocus="this.select()"
-              inputmode="numeric" pattern="[0-9]*"
+              onfocus="this.select()" inputmode="numeric" pattern="[0-9]*"
               placeholder="0" />
           </div>
           <div class="wrec-ts" id="wts_${safeId(x.id)}_${f}">${esc(x[f+'ts']||'')}</div>
@@ -4939,23 +4915,12 @@ updateKeyUI();
   const localInvoices = JSON.parse(localStorage.getItem('ck_inv')||'[]');
   const localArchived = JSON.parse(localStorage.getItem('ck_archived')||'[]');
 
-  // Wait for supabase library to be ready (slow mobile connections need this)
-  let _supaWait = 0;
-  while(typeof supabase === 'undefined' && _supaWait < 10){
-    await new Promise(r=>setTimeout(r,500));
-    _supaWait++;
-  }
-
-  // Retry up to 5 times with increasing delays — handles slow mobile connections
+  // Retry up to 5 times — handles slow mobile/phone connections
   let ok = false;
-  const _retryDelays = [0, 2000, 4000, 6000, 10000];
-  for(let _attempt = 0; _attempt < _retryDelays.length; _attempt++){
-    if(_retryDelays[_attempt] > 0){
-      await new Promise(r=>setTimeout(r, _retryDelays[_attempt]));
-    }
+  for(let _t=0;_t<5;_t++){
+    if(_t>0) await new Promise(r=>setTimeout(r,_t*2000));
     ok = await sbLoadAll();
     if(ok) break;
-    console.warn('sbLoadAll attempt', _attempt+1, 'failed, retrying...');
   }
 
   // Only use localStorage if Supabase completely failed
@@ -4982,7 +4947,7 @@ updateKeyUI();
   // Auto-archive disabled — admin must use "Archive Now" button manually
   // checkAutoArchive(); setInterval(checkAutoArchive,3600000);
   if(ok) toast('✓ Connected to team database','ok');
-  else toast('⚠️ Cannot reach server — check internet connection. Tap Sync to retry.','err');
+  else toast('⚠️ Could not connect — tap ↻ Sync to retry','err');
   if(!sessionRestored){
     renderTbl(); updateStats();
   }
