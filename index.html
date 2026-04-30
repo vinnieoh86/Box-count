@@ -1065,22 +1065,22 @@ async function sbLoadAll(){
       aliases = [...al.map(a=>({from:a.from,to:a.to})), ...missing];
     }
 
-    // ── 4. Expected orders — Supabase is truth ───────────────────────
+    // ── 4. Expected orders — cloud is single source of truth ──────────
     try{
       const {data:expSync} = await supa.from('settings').select('value').eq('key','expected_orders').maybeSingle();
       if(expSync?.value){
         const cloudExp = JSON.parse(expSync.value);
-        // Only add cloud orders not already in local AND not deleted
-        const localIds2 = new Set(expectedOrders.map(e=>e.id));
-        const newFromCloud = cloudExp.filter(e=>!localIds2.has(e.id) && !_deletedExpIds.has(e.id));
-        if(newFromCloud.length){
-          expectedOrders = [...expectedOrders, ...newFromCloud];
-          localStorage.setItem('ck_expected', JSON.stringify(expectedOrders));
-        }
-        // If local has MORE than cloud (e.g. deletions on this device), save back
-        if(expectedOrders.length < cloudExp.filter(e=>!_deletedExpIds.has(e.id)).length === false){
-          // local is already merged
-        }
+        // Replace local with cloud version, minus any locally-deleted entries
+        // This ensures deletes/matches on any device propagate to all devices
+        expectedOrders = cloudExp.filter(e => !_deletedExpIds.has(e.id));
+        localStorage.setItem('ck_expected', JSON.stringify(expectedOrders));
+      } else {
+        // Nothing in cloud — keep local but dedupe
+        const seen = new Set();
+        expectedOrders = expectedOrders.filter(e => {
+          const k = e.poNumber || (e.vendor+'|'+e.date);
+          if(seen.has(k)) return false; seen.add(k); return true;
+        });
       }
     }catch(e){ console.warn('expected sync:', e.message); }
 
@@ -3170,14 +3170,16 @@ function updateVendorAccRow(invId){
 
 function manualSync(){
   if(_mergePending){ toast('⏳ Merge in progress — sync will run after','wrn'); return; }
-  const btn = document.querySelector('.xbtn[onclick="manualSync()"]');
+  const btn = document.querySelector('[onclick="manualSync()"]');
   if(btn){ btn.textContent='↻ Syncing...'; btn.disabled=true; }
   sbLoadAll().then(ok=>{
-    refreshActiveTab(); updateStats();
-    if(document.getElementById('page-dashboard')?.classList.contains('active')) renderDash();
-    if(document.getElementById('page-employee')?.classList.contains('active')) renderEmployee();
+    // Always re-render ALL tabs so nothing is stale
+    renderTbl(); updateStats();
+    renderEmployee();
+    renderDash();
+    renderArchive();
     if(btn){ btn.textContent='↻ Sync'; btn.disabled=false; }
-    toast(ok ? '✓ Synced with team database' : '⚠️ Sync failed — check connection','ok');
+    toast(ok ? '✓ Synced' : '⚠️ Sync failed — check connection', ok?'ok':'err');
   });
 }
 
@@ -3388,7 +3390,7 @@ function startAutoSync(){
     if(!currentUser) return;
     if(!document.getElementById('pinOverlay').classList.contains('hidden')) return;
     // Don't sync if we just saved a new invoice — wait for Supabase to settle
-    if(Date.now() - _lastSaveTime < 15000) return;
+    if(Date.now() - _lastSaveTime < 3000) return;
     // Don't sync if a merge is in progress — would wipe the invoice before confirm
     if(_mergePending) return;
 
@@ -3396,17 +3398,15 @@ function startAutoSync(){
     const prevCount = invoices.length;
     await sbLoadAll();
     const newCount = invoices.length;
-
-    // Figure out what changed
     const added   = invoices.filter(x=>!prevIds.has(String(x.id))).length;
     const removed = prevCount - newCount + added;
 
-    // Re-render only the currently active tab — no page jump, no logout
+    // Always re-render — RCV values may have changed even if invoice count is same
     refreshActiveTab();
 
     if(added > 0)   toast(`📥 ${added} new invoice${added!==1?'s':''} synced`,'ok');
     if(removed > 0) toast(`🗑 ${removed} invoice${removed!==1?'s':''} removed on another device`,'wrn');
-  }, 15000); // every 15s — faster multi-device sync
+  }, 5000); // every 5s — near-realtime multi-device sync
 }
 
 function refreshActiveTab(){
