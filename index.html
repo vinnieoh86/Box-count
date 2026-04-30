@@ -1109,6 +1109,10 @@ async function sbLoadAll(){
     const txt=document.getElementById('syncTxt');
     if(dot) dot.style.background='#ef4444';
     if(txt) txt.textContent='Offline';
+    // Show actual error in console for debugging
+    if(typeof err.message === 'string' && err.message.includes('supabase')){
+      console.error('HINT: Supabase library may not have loaded yet');
+    }
     return false;
   }
 }
@@ -3399,26 +3403,33 @@ function startAutoSync(){
     // Don't sync if not logged in or PIN screen showing
     if(!currentUser) return;
     if(!document.getElementById('pinOverlay').classList.contains('hidden')) return;
-    // Don't sync if we just saved a new invoice — wait for Supabase to settle
-    if(Date.now() - _lastSaveTime < 15000) return;
-    // Don't sync if a merge is in progress — would wipe the invoice before confirm
+    // Don't sync if a merge is in progress
     if(_mergePending) return;
+    // Don't sync if we just saved — wait for Supabase to settle
+    if(Date.now() - _lastSaveTime < 8000) return;
 
     const prevIds = new Set(invoices.map(x=>String(x.id)));
     const prevCount = invoices.length;
-    await sbLoadAll();
-    const newCount = invoices.length;
+    const syncOk = await sbLoadAll();
 
-    // Figure out what changed
+    if(!syncOk){
+      // Update indicator to show offline
+      const dot = document.getElementById('syncDot');
+      const txt = document.getElementById('syncTxt');
+      if(dot) dot.style.background = '#ef4444';
+      if(txt) txt.textContent = 'Reconnecting...';
+      return; // Will retry next interval
+    }
+
+    const newCount = invoices.length;
     const added   = invoices.filter(x=>!prevIds.has(String(x.id))).length;
     const removed = prevCount - newCount + added;
 
-    // Re-render only the currently active tab — no page jump, no logout
     refreshActiveTab();
 
     if(added > 0)   toast(`📥 ${added} new invoice${added!==1?'s':''} synced`,'ok');
     if(removed > 0) toast(`🗑 ${removed} invoice${removed!==1?'s':''} removed on another device`,'wrn');
-  }, 30000); // every 30 seconds — auto, no manual click needed
+  }, 15000); // every 15 seconds — faster sync for better multi-device experience
 }
 
 function refreshActiveTab(){
@@ -4928,11 +4939,23 @@ updateKeyUI();
   const localInvoices = JSON.parse(localStorage.getItem('ck_inv')||'[]');
   const localArchived = JSON.parse(localStorage.getItem('ck_archived')||'[]');
 
-  // Then load Supabase — retry once on failure (Safari sometimes needs it)
-  let ok = await sbLoadAll();
-  if(!ok){
-    await new Promise(r=>setTimeout(r,2000));
+  // Wait for supabase library to be ready (slow mobile connections need this)
+  let _supaWait = 0;
+  while(typeof supabase === 'undefined' && _supaWait < 10){
+    await new Promise(r=>setTimeout(r,500));
+    _supaWait++;
+  }
+
+  // Retry up to 5 times with increasing delays — handles slow mobile connections
+  let ok = false;
+  const _retryDelays = [0, 2000, 4000, 6000, 10000];
+  for(let _attempt = 0; _attempt < _retryDelays.length; _attempt++){
+    if(_retryDelays[_attempt] > 0){
+      await new Promise(r=>setTimeout(r, _retryDelays[_attempt]));
+    }
     ok = await sbLoadAll();
+    if(ok) break;
+    console.warn('sbLoadAll attempt', _attempt+1, 'failed, retrying...');
   }
 
   // Only use localStorage if Supabase completely failed
@@ -4959,7 +4982,7 @@ updateKeyUI();
   // Auto-archive disabled — admin must use "Archive Now" button manually
   // checkAutoArchive(); setInterval(checkAutoArchive,3600000);
   if(ok) toast('✓ Connected to team database','ok');
-  else toast('⚠️ Offline mode — changes will sync when reconnected','wrn');
+  else toast('⚠️ Cannot reach server — check internet connection. Tap Sync to retry.','err');
   if(!sessionRestored){
     renderTbl(); updateStats();
   }
