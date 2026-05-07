@@ -2469,104 +2469,57 @@ async function gmailImportOrders(forceRefresh=false){
   if(_arrowBtn) _arrowBtn.disabled=true;
 
   try{
-    // Call Anthropic API with Gmail MCP — correct browser headers required
-    const apiResp = await fetch('https://api.anthropic.com/v1/messages', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'x-api-key': getKey(),
-        'anthropic-version': '2023-06-01',
-        'anthropic-dangerous-direct-browser-access': 'true'
-      },
-      body: JSON.stringify({
-        model: 'claude-sonnet-4-20250514',
-        max_tokens: 1000,
-        system: 'You are a Gmail assistant. Use the Gmail search tool to find emails sent FROM jwonghomeiot@gmail.com with subjects matching "[VENDOR] Cee Kay Order #NUMBER". Search for emails from the last 30 days. Return ONLY a raw JSON array — no markdown, no explanation, no backticks. Each element: {"vendor":"VENDOR NAME UPPERCASE","poNumber":"####","date":"MM/DD/YYYY"}.',
-        messages: [{ role: 'user', content: 'Search Gmail for Cee Kay order emails from jwonghomeiot@gmail.com and return the JSON array.' }],
-        mcp_servers: [{
-          type: 'url',
-          url: 'https://gmailmcp.googleapis.com/mcp/v1',
-          name: 'gmail-mcp'
-        }]
-      })
-    });
-
-    if(!apiResp.ok){
-      const eb = await apiResp.json().catch(()=>({error:{message:'HTTP '+apiResp.status}}));
-      throw new Error(eb.error?.message || 'API error ' + apiResp.status);
-    }
-    const apiData = await apiResp.json();
-
-    // Extract the JSON array from the text response
-    const allText = (apiData.content || [])
-      .filter(b => b.type === 'text')
-      .map(b => b.text)
-      .join('');
-
-    let freshOrders = [];
-    try {
-      const clean = allText.replace(/```json|```/g, '').trim();
-      const arrMatch = clean.match(/\[[\s\S]*\]/);
-      if(arrMatch) freshOrders = JSON.parse(arrMatch[0]);
-    } catch(parseErr) {
-      console.warn('Could not parse Gmail response as JSON:', allText.substring(0,200));
-    }
-
     if(forceRefresh){
+      // Force refresh: wipe deleted list, reload everything from Supabase
       localStorage.removeItem('ck_deleted_exp');
       _deletedExpIds.clear();
     }
 
-    const today = new Date().toLocaleDateString('en-US',{month:'2-digit',day:'2-digit',year:'numeric'});
-    const existingPOs = new Set(expectedOrders.map(e=>e.poNumber).filter(Boolean));
-    const before = expectedOrders.length;
+    const {data} = await supa.from('settings').select('value').eq('key','expected_orders').maybeSingle();
 
-    freshOrders.forEach(o => {
-      const po = String(o.poNumber||'').trim();
-      const vendor = String(o.vendor||'').trim().toUpperCase();
-      if(!vendor || !po) return;
-      if(existingPOs.has(po)) return; // never duplicate by PO#
-      expectedOrders.push({
-        id: 'exp_' + Date.now() + '_' + Math.random().toString(36).slice(2,6),
-        vendor,
-        date: o.date || today,
-        notes: 'PO #' + po,
-        poNumber: po,
-        createdBy: currentUser?.name || 'Gmail Import',
-        createdAt: new Date().toISOString(),
-        isExpected: true, matched: false, fromGmail: true
+    if(!data?.value){
+      // Nothing in Supabase — open the paste modal so user can add orders manually
+      if(btn){ btn.textContent='📧 Import Orders'; btn.disabled=false; }
+      if(_arrowBtn) _arrowBtn.disabled=false;
+      openOrderImportModal();
+      toast('📋 No cloud orders yet — paste Gmail subjects below', 'wrn');
+      return;
+    }
+
+    const cloudExp = JSON.parse(data.value);
+
+    if(forceRefresh){
+      // Union of cloud + local, then dedup
+      const cloudIds = new Set(cloudExp.map(e=>e.id));
+      const localOnly = expectedOrders.filter(e=>!cloudIds.has(e.id));
+      const combined = [...cloudExp, ...localOnly];
+      const seenPO2=new Set(); const seenVD2=new Set();
+      expectedOrders = combined.filter(e=>{
+        if(e.poNumber){ if(seenPO2.has(e.poNumber)) return false; seenPO2.add(e.poNumber); return true; }
+        const k=(e.vendor||'').toLowerCase()+'|'+(e.date||''); if(seenVD2.has(k)) return false; seenVD2.add(k); return true;
       });
-      existingPOs.add(po);
-    });
+      localStorage.setItem('ck_expected', JSON.stringify(expectedOrders));
+      sbSaveExpected().catch(e=>console.warn('save error:', e.message));
+      renderEmployee();
+      toast(`📧 Refreshed — ${expectedOrders.length} orders loaded`, 'ok');
+      return;
+    }
 
-    // Also pull any existing cloud orders and merge (non-destructive)
-    try {
-      const {data: cloudData} = await supa.from('settings').select('value').eq('key','expected_orders').maybeSingle();
-      if(cloudData?.value){
-        const cloudExp = JSON.parse(cloudData.value);
-        const localIds = new Set(expectedOrders.map(e=>e.id));
-        const toMerge = cloudExp.filter(e => !localIds.has(e.id) && !_deletedExpIds.has(e.id));
-        expectedOrders = [...expectedOrders, ...toMerge];
-      }
-    } catch(e){ /* cloud merge is best-effort */ }
-
-    // Deduplicate by PO# then vendor+date
+    // Normal merge — add new cloud orders not already in local
+    const localIds = new Set(expectedOrders.map(e=>e.id));
+    const toMerge = cloudExp.filter(e => !localIds.has(e.id) && !_deletedExpIds.has(e.id));
+    const before = expectedOrders.length;
+    expectedOrders = [...expectedOrders, ...toMerge];
     const seenPO=new Set(); const seenVD=new Set();
     expectedOrders = expectedOrders.filter(e=>{
       if(e.poNumber){ if(seenPO.has(e.poNumber)) return false; seenPO.add(e.poNumber); return true; }
       const k=(e.vendor||'').toLowerCase()+'|'+(e.date||''); if(seenVD.has(k)) return false; seenVD.add(k); return true;
     });
-
     localStorage.setItem('ck_expected', JSON.stringify(expectedOrders));
     sbSaveExpected().catch(e=>console.warn('save error:',e.message));
     renderEmployee();
-
     const added = expectedOrders.length - before;
-    if(forceRefresh){
-      toast(`📧 Refreshed — ${expectedOrders.length} order${expectedOrders.length!==1?'s':''} loaded`, 'ok');
-    } else {
-      toast(added > 0 ? `📧 ${added} new order${added!==1?'s':''} imported from Gmail` : '📧 Expected orders up to date', 'ok');
-    }
+    toast(added > 0 ? `📧 ${added} new order${added!==1?'s':''} synced` : '📧 Expected orders up to date', 'ok');
 
   }catch(e){
     console.error('Import error:', e);
