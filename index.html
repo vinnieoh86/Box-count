@@ -2469,15 +2469,20 @@ async function gmailImportOrders(forceRefresh=false){
   if(_arrowBtn) _arrowBtn.disabled=true;
 
   try{
-    // Fetch order emails directly from jwonghomeiot via Anthropic API + Gmail MCP
+    // Call Anthropic API with Gmail MCP — correct browser headers required
     const apiResp = await fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: {
+        'Content-Type': 'application/json',
+        'x-api-key': getKey(),
+        'anthropic-version': '2023-06-01',
+        'anthropic-dangerous-direct-browser-access': 'true'
+      },
       body: JSON.stringify({
         model: 'claude-sonnet-4-20250514',
         max_tokens: 1000,
-        system: 'You are a Gmail assistant. Search Gmail for emails sent FROM jwonghomeiot@gmail.com with subjects matching the pattern "[VENDOR] Cee Kay Order #NUMBER" received in the last 30 days. Return ONLY a JSON array of objects with fields: vendor (string, uppercase), poNumber (string), date (MM/DD/YYYY of send date). No markdown, no explanation, only the JSON array.',
-        messages: [{ role: 'user', content: 'Search Gmail for Cee Kay order emails from jwonghomeiot and return the JSON array.' }],
+        system: 'You are a Gmail assistant. Use the Gmail search tool to find emails sent FROM jwonghomeiot@gmail.com with subjects matching "[VENDOR] Cee Kay Order #NUMBER". Search for emails from the last 30 days. Return ONLY a raw JSON array — no markdown, no explanation, no backticks. Each element: {"vendor":"VENDOR NAME UPPERCASE","poNumber":"####","date":"MM/DD/YYYY"}.',
+        messages: [{ role: 'user', content: 'Search Gmail for Cee Kay order emails from jwonghomeiot@gmail.com and return the JSON array.' }],
         mcp_servers: [{
           type: 'url',
           url: 'https://gmailmcp.googleapis.com/mcp/v1',
@@ -2486,27 +2491,28 @@ async function gmailImportOrders(forceRefresh=false){
       })
     });
 
-    if(!apiResp.ok) throw new Error('API error: ' + apiResp.status);
+    if(!apiResp.ok){
+      const eb = await apiResp.json().catch(()=>({error:{message:'HTTP '+apiResp.status}}));
+      throw new Error(eb.error?.message || 'API error ' + apiResp.status);
+    }
     const apiData = await apiResp.json();
 
-    // Extract JSON from response — look for mcp_tool_result or text blocks
-    let orders = [];
+    // Extract the JSON array from the text response
     const allText = (apiData.content || [])
       .filter(b => b.type === 'text')
       .map(b => b.text)
       .join('');
 
+    let freshOrders = [];
     try {
       const clean = allText.replace(/```json|```/g, '').trim();
-      // Find the JSON array in the text
       const arrMatch = clean.match(/\[[\s\S]*\]/);
-      if(arrMatch) orders = JSON.parse(arrMatch[0]);
+      if(arrMatch) freshOrders = JSON.parse(arrMatch[0]);
     } catch(parseErr) {
-      console.warn('Could not parse Gmail API response as JSON:', allText);
+      console.warn('Could not parse Gmail response as JSON:', allText.substring(0,200));
     }
 
     if(forceRefresh){
-      // Force: clear deleted list so nothing is suppressed, then merge fresh results
       localStorage.removeItem('ck_deleted_exp');
       _deletedExpIds.clear();
     }
@@ -2515,12 +2521,11 @@ async function gmailImportOrders(forceRefresh=false){
     const existingPOs = new Set(expectedOrders.map(e=>e.poNumber).filter(Boolean));
     const before = expectedOrders.length;
 
-    orders.forEach(o => {
+    freshOrders.forEach(o => {
       const po = String(o.poNumber||'').trim();
       const vendor = String(o.vendor||'').trim().toUpperCase();
       if(!vendor || !po) return;
-      if(!forceRefresh && existingPOs.has(po)) return; // skip dupes on normal import
-      if(forceRefresh && existingPOs.has(po)) return;  // always skip true dupes
+      if(existingPOs.has(po)) return; // never duplicate by PO#
       expectedOrders.push({
         id: 'exp_' + Date.now() + '_' + Math.random().toString(36).slice(2,6),
         vendor,
