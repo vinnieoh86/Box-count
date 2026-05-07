@@ -2469,36 +2469,35 @@ async function gmailImportOrders(forceRefresh=false){
   if(_arrowBtn) _arrowBtn.disabled=true;
 
   try{
-    if(forceRefresh){
-      // Force refresh: wipe deleted list, reload everything from Supabase
-      localStorage.removeItem('ck_deleted_exp');
-      _deletedExpIds.clear();
+    const webAppUrl = localStorage.getItem('ck_gas_url') || '';
+    if(webAppUrl){
+      await fetch(webAppUrl, { method:'GET', mode:'no-cors' }).catch(()=>{});
+      // Wait for script to read Gmail + write to Supabase (can take 5-8s)
+      await new Promise(r => setTimeout(r, 7000));
     }
 
     const {data} = await supa.from('settings').select('value').eq('key','expected_orders').maybeSingle();
-
-    if(!data?.value){
-      // Nothing in Supabase — open the paste modal so user can add orders manually
-      if(btn){ btn.textContent='📧 Import Orders'; btn.disabled=false; }
-      if(_arrowBtn) _arrowBtn.disabled=false;
-      openOrderImportModal();
-      toast('📋 No cloud orders yet — paste Gmail subjects below', 'wrn');
-      return;
-    }
+    if(!data?.value){ toast('📧 No orders in Supabase yet','wrn'); return; }
 
     const cloudExp = JSON.parse(data.value);
 
     if(forceRefresh){
-      // Union of cloud + local, then dedup
+      // Force refresh — combine cloud + local, dedup, save back to Supabase
+      // This ensures nothing is lost from either source
+      localStorage.removeItem('ck_deleted_exp');
+      _deletedExpIds.clear();
+      // Union of cloud + local
       const cloudIds = new Set(cloudExp.map(e=>e.id));
       const localOnly = expectedOrders.filter(e=>!cloudIds.has(e.id));
       const combined = [...cloudExp, ...localOnly];
+      // Deduplicate by PO# then vendor+date
       const seenPO2=new Set(); const seenVD2=new Set();
       expectedOrders = combined.filter(e=>{
         if(e.poNumber){ if(seenPO2.has(e.poNumber)) return false; seenPO2.add(e.poNumber); return true; }
         const k=(e.vendor||'').toLowerCase()+'|'+(e.date||''); if(seenVD2.has(k)) return false; seenVD2.add(k); return true;
       });
       localStorage.setItem('ck_expected', JSON.stringify(expectedOrders));
+      // Save merged result back to Supabase (fire and forget — don't block UI)
       sbSaveExpected().catch(e=>console.warn('save error:', e.message));
       renderEmployee();
       toast(`📧 Refreshed — ${expectedOrders.length} orders loaded`, 'ok');
@@ -2510,6 +2509,7 @@ async function gmailImportOrders(forceRefresh=false){
     const toMerge = cloudExp.filter(e => !localIds.has(e.id) && !_deletedExpIds.has(e.id));
     const before = expectedOrders.length;
     expectedOrders = [...expectedOrders, ...toMerge];
+    // Deduplicate by PO# then vendor+date
     const seenPO=new Set(); const seenVD=new Set();
     expectedOrders = expectedOrders.filter(e=>{
       if(e.poNumber){ if(seenPO.has(e.poNumber)) return false; seenPO.add(e.poNumber); return true; }
